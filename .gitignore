@@ -1,0 +1,19 @@
+# PyCharm / IDE
+.idea/
+
+# Python – bytecode i cache (NIE commituj)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Środowisko wirtualne
+.venv/
+venv/
+env/
+
+# Streamlit (opcjonalnie, jeśli pojawi się lokalna konfiguracja)
+.streamlit/secrets.toml
+
+# System / edytor
+.DS_Store
+Thumbs.db
