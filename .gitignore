@@ -14,6 +14,10 @@ env/
 # Streamlit (opcjonalnie, jeśli pojawi się lokalna konfiguracja)
 .streamlit/secrets.toml
 
+# Lokalne eksporty XTB (numer konta, historia transakcji)
+import_xtb.xlsx
+*_xtb*.xlsx
+
 # System / edytor
 .DS_Store
 Thumbs.db

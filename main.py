@@ -121,14 +121,22 @@ def _display_summary_table(df: pd.DataFrame) -> None:
 with st.sidebar:
     st.header("Import z XTB")
     uploaded = st.file_uploader(
-        "Wgraj raport portfela (CSV lub Excel)",
+        "Wgraj eksport z XTB (Excel lub CSV)",
         type=["csv", "xlsx", "xls"],
-        help="Plik powinien zawierać kolumny: Ticker, Ilość, Średnia cena zakupu",
+        help=(
+            "Natywny Excel z platformy XTB (arkusz „Cash Operations”) "
+            "lub uproszczony plik z kolumnami: Ticker, Ilość, Średnia cena zakupu"
+        ),
     )
     st.markdown(
         """
-        **Wskazówka:** Jeśli Yahoo nie znajdzie ceny,
-        dodaj mapowanie tickera w `importer.py` → `TICKER_MAP`.
+        **Eksport XTB:** w platformie pobierz raport Excel
+        (np. *Cash Operations* + *Closed Positions*).
+
+        Aplikacja sama wyliczy **otwarte pozycje** z historii zakupów i sprzedaży.
+
+        **Wskazówka:** jeśli Yahoo nie znajdzie ceny,
+        sprawdź mapowanie w `importer.py` → `TICKER_MAP`.
         """
     )
 

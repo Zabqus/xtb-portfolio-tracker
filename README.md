@@ -53,11 +53,19 @@ Przeglądarka otworzy się pod adresem `http://localhost:8501`.
 ### 5. Wgraj raport XTB
 
 1. W panelu bocznym (**sidebar**) kliknij **Browse files**.
-2. Wybierz plik CSV lub Excel z kolumnami:
-   - **Ticker**
-   - **Ilość**
-   - **Średnia cena zakupu**
-3. Dashboard automatycznie pobierze ceny z Yahoo Finance i wyświetli metryki oraz wykresy.
+2. Wybierz **natywny eksport Excel z platformy XTB** (arkusze m.in. *Cash Operations*)
+   **albo** uproszczony CSV/Excel z kolumnami: Ticker, Ilość, Średnia cena zakupu.
+3. Dashboard wyliczy otwarte pozycje, pobierze ceny z Yahoo Finance i pokaże wykresy.
+
+> **Uwaga:** eksport XTB zawiera numer konta – nie commituj go do publicznego repozytorium.
+
+### Uruchomienie w Cursor (Windows, bez aktywacji venv)
+
+```powershell
+cd D:\xtb_portfolio_tracker
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m streamlit run main.py
+```
 
 ## Przykładowy plik testowy
 
