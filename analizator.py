@@ -1,11 +1,14 @@
 """
 Moduł analityczny portfela – pobieranie cen rynkowych i wyliczanie wyników.
+Obsługuje wielowalutowy portfel z przeliczeniem na wybraną walutę wyświetlania.
 """
 
 from __future__ import annotations
 
 import pandas as pd
 import yfinance as yf
+
+from waluty import pobierz_kursy_do_waluty, przelicz_kwote
 
 
 def _fetch_last_prices(tickers: list[str]) -> dict[str, float]:
@@ -17,7 +20,6 @@ def _fetch_last_prices(tickers: list[str]) -> dict[str, float]:
     if not unique_tickers:
         return {}
 
-    # Pobranie wsadowe – szybsze niż pojedyncze zapytania
     data = yf.download(
         unique_tickers,
         period="5d",
@@ -32,7 +34,8 @@ def _fetch_last_prices(tickers: list[str]) -> dict[str, float]:
     if len(unique_tickers) == 1:
         ticker = unique_tickers[0]
         if not data.empty and "Close" in data.columns:
-            prices[ticker] = float(data["Close"].dropna().iloc[-1])
+            close = data["Close"].dropna()
+            prices[ticker] = float(close.iloc[-1]) if len(close) else float("nan")
         else:
             prices[ticker] = float("nan")
         return prices
@@ -48,40 +51,59 @@ def _fetch_last_prices(tickers: list[str]) -> dict[str, float]:
     return prices
 
 
-def analyze_portfolio(portfolio: pd.DataFrame) -> pd.DataFrame:
+def analyze_portfolio(
+    portfolio: pd.DataFrame,
+    waluta_wyswietlania: str | None = None,
+) -> pd.DataFrame:
     """
     Wzbogaca portfel o ceny rynkowe oraz metryki zysku/straty.
 
-    Wymagane kolumny wejściowe: ticker_yahoo, ilosc, srednia_cena
-    (opcjonalnie ticker_xtb do wyświetlania).
-
-    Dodaje kolumny:
-        - cena_rynkowa
-        - koszt_pozycji (ilość × średnia cena)
-        - wartosc_rynkowa
-        - zysk_strata (kwotowo)
-        - roi_pct (zwrot procentowy)
+    Wartości w walucie instrumentu trafiają do kolumn *_waluta.
+    Po przeliczeniu FX – kolumny koszt_pozycji, wartosc_rynkowa, zysk_strata (w walucie wyświetlania).
     """
     required = {"ticker_yahoo", "ilosc", "srednia_cena"}
     if not required.issubset(portfolio.columns):
         raise ValueError(f"Brak wymaganych kolumn portfela: {required - set(portfolio.columns)}")
 
+    waluta_konta = portfolio.attrs.get("waluta_konta", "EUR")
+    docelowa = (waluta_wyswietlania or waluta_konta).upper()
+
     result = portfolio.copy()
+    if "waluta" not in result.columns:
+        result["waluta"] = waluta_konta
+
     price_map = _fetch_last_prices(result["ticker_yahoo"].tolist())
     result["cena_rynkowa"] = result["ticker_yahoo"].map(price_map)
 
-    result["koszt_pozycji"] = result["ilosc"] * result["srednia_cena"]
-    result["wartosc_rynkowa"] = result["ilosc"] * result["cena_rynkowa"]
+    # Wartości w oryginalnej walucie notowań instrumentu
+    result["koszt_waluta"] = result["ilosc"] * result["srednia_cena"]
+    result["wartosc_waluta"] = result["ilosc"] * result["cena_rynkowa"]
+    result["zysk_waluta"] = result["wartosc_waluta"] - result["koszt_waluta"]
+
+    waluty = set(result["waluta"].dropna().unique()) | {docelowa}
+    kursy = pobierz_kursy_do_waluty(waluty, docelowa)
+
+    result["koszt_pozycji"] = result.apply(
+        lambda r: przelicz_kwote(r["koszt_waluta"], r["waluta"], docelowa, kursy),
+        axis=1,
+    )
+    result["wartosc_rynkowa"] = result.apply(
+        lambda r: przelicz_kwote(r["wartosc_waluta"], r["waluta"], docelowa, kursy),
+        axis=1,
+    )
     result["zysk_strata"] = result["wartosc_rynkowa"] - result["koszt_pozycji"]
     result["roi_pct"] = (
         (result["zysk_strata"] / result["koszt_pozycji"]) * 100
     ).where(result["koszt_pozycji"] > 0)
 
+    result.attrs["waluta_konta"] = waluta_konta
+    result.attrs["waluta_wyswietlania"] = docelowa
+    result.attrs["kursy_fx"] = kursy
     return result
 
 
-def portfolio_summary(analyzed: pd.DataFrame) -> dict[str, float]:
-    """Zwraca zagregowane metryki całego portfela."""
+def portfolio_summary(analyzed: pd.DataFrame) -> dict[str, float | str]:
+    """Zwraca zagregowane metryki całego portfela w walucie wyświetlania."""
     valid = analyzed.dropna(subset=["wartosc_rynkowa", "koszt_pozycji"])
     total_value = valid["wartosc_rynkowa"].sum()
     total_cost = valid["koszt_pozycji"].sum()
@@ -93,4 +115,6 @@ def portfolio_summary(analyzed: pd.DataFrame) -> dict[str, float]:
         "koszt_calkowity": float(total_cost),
         "zysk_strata_laczny": float(total_pnl),
         "roi_laczny_pct": float(total_roi),
+        "waluta_wyswietlania": analyzed.attrs.get("waluta_wyswietlania", "PLN"),
+        "waluta_konta": analyzed.attrs.get("waluta_konta", "PLN"),
     }

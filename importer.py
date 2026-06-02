@@ -14,6 +14,8 @@ from typing import BinaryIO, Union
 
 import pandas as pd
 
+from waluty import _odczytaj_numer_konta, waluta_z_tickera, wykryj_walute_konta
+
 # Mapowanie tickerów XTB → Yahoo Finance (gdy brak sufiksu giełdy w pliku)
 TICKER_MAP: dict[str, str] = {
     "VWCE": "VWCE.DE",
@@ -83,6 +85,14 @@ def map_ticker_to_yahoo(ticker: str) -> str:
     # XTB: akcje z USA mają sufiks .US; Yahoo używa samego symbolu
     if normalized.endswith(".US"):
         return normalized[:-3]
+
+    # GPW na XTB: sufiks .PL; Yahoo Finance używa .WA
+    if normalized.endswith(".PL"):
+        return f"{normalized[:-3]}.WA"
+
+    # Londyn na XTB: sufiks .UK; Yahoo używa .L
+    if normalized.endswith(".UK"):
+        return f"{normalized[:-3]}.L"
 
     if "." in normalized:
         return normalized
@@ -186,6 +196,16 @@ def _read_xtb_cash_operations(source: Union[str, BinaryIO, io.BytesIO]) -> pd.Da
     )
 
 
+def _read_xtb_metadata(source: Union[str, BinaryIO, io.BytesIO]) -> pd.DataFrame:
+    """Wczytuje nagłówek arkusza (numer konta, zakres dat)."""
+    return pd.read_excel(
+        source,
+        sheet_name=XTB_CASH_OPERATIONS_SHEET,
+        header=None,
+        nrows=5,
+    )
+
+
 def _normalize_simple_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Dopasowuje nazwy kolumn uproszczonego pliku do standardowych pól portfela."""
     rename_map: dict[str, str] = {}
@@ -207,11 +227,16 @@ def _normalize_simple_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns=rename_map)[list(REQUIRED_COLUMNS)]
 
 
-def _finalize_portfolio(df: pd.DataFrame) -> pd.DataFrame:
-    """Dodaje mapowanie Yahoo i waliduje wartości liczbowe."""
+def _finalize_portfolio(
+    df: pd.DataFrame,
+    waluta_konta: str = "EUR",
+    numer_konta: str | None = None,
+) -> pd.DataFrame:
+    """Dodaje mapowanie Yahoo, walutę pozycji i waliduje wartości liczbowe."""
     result = df.copy()
     result["ticker_xtb"] = result["ticker"].astype(str).str.strip().str.upper()
     result["ticker_yahoo"] = result["ticker_xtb"].apply(map_ticker_to_yahoo)
+    result["waluta"] = result["ticker_xtb"].apply(waluta_z_tickera)
     result["ilosc"] = pd.to_numeric(result["ilosc"], errors="coerce")
     result["srednia_cena"] = pd.to_numeric(result["srednia_cena"], errors="coerce")
 
@@ -221,7 +246,13 @@ def _finalize_portfolio(df: pd.DataFrame) -> pd.DataFrame:
     if (result["ilosc"] <= 0).any():
         raise ValueError("Ilość każdej pozycji musi być większa od zera.")
 
-    return result[["ticker_xtb", "ticker_yahoo", "ilosc", "srednia_cena"]].reset_index(drop=True)
+    result = result[
+        ["ticker_xtb", "ticker_yahoo", "waluta", "ilosc", "srednia_cena"]
+    ].reset_index(drop=True)
+    result.attrs["waluta_konta"] = waluta_konta
+    if numer_konta:
+        result.attrs["numer_konta"] = numer_konta
+    return result
 
 
 def parse_xtb_report(
@@ -243,15 +274,19 @@ def parse_xtb_report(
     if name.endswith((".xlsx", ".xls")):
         excel = pd.ExcelFile(file_source)
         if _is_xtb_native_excel(excel.sheet_names):
+            meta = _read_xtb_metadata(file_source)
             cash_ops = _read_xtb_cash_operations(file_source)
             portfolio = _aggregate_open_positions_from_cash_ops(cash_ops)
-            return _finalize_portfolio(portfolio)
+            tickery = portfolio["ticker"].astype(str).tolist()
+            numer = _odczytaj_numer_konta(meta)
+            waluta_konta = wykryj_walute_konta(cash_ops, meta, tickery)
+            return _finalize_portfolio(portfolio, waluta_konta=waluta_konta, numer_konta=numer)
 
         raw_df = pd.read_excel(file_source)
-        return _finalize_portfolio(_normalize_simple_columns(raw_df))
+        return _finalize_portfolio(_normalize_simple_columns(raw_df), waluta_konta="PLN")
 
     if name.endswith(".csv"):
         raw_df = pd.read_csv(file_source)
-        return _finalize_portfolio(_normalize_simple_columns(raw_df))
+        return _finalize_portfolio(_normalize_simple_columns(raw_df), waluta_konta="PLN")
 
     raise ValueError("Obsługiwane formaty: .csv, .xlsx, .xls")

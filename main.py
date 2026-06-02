@@ -12,8 +12,8 @@ import streamlit as st
 
 from analizator import analyze_portfolio, portfolio_summary
 from importer import parse_xtb_report
+from waluty import WALUTY_WSPIERANE
 
-# Konfiguracja strony
 st.set_page_config(
     page_title="XTB Portfolio Tracker",
     page_icon="📈",
@@ -21,10 +21,10 @@ st.set_page_config(
 )
 
 st.title("📈 XTB Portfolio Tracker")
-st.caption("Lokalny dashboard do analizy portfela akcji i ETF-ów")
+st.caption("Lokalny dashboard do analizy portfela akcji i ETF-ów (wielowalutowo)")
 
 
-def _format_currency(value: float, currency: str = "PLN") -> str:
+def _format_currency(value: float, currency: str) -> str:
     """Formatuje kwotę do wyświetlenia w metrykach."""
     if pd.isna(value):
         return "—"
@@ -38,19 +38,16 @@ def _pnl_color(value: float) -> str:
     return "normal" if value > 0 else "inverse"
 
 
-def _build_pie_chart(df: pd.DataFrame) -> go.Figure:
+def _build_pie_chart(df: pd.DataFrame, waluta: str) -> go.Figure:
     """Wykres kołowy – udział procentowy pozycji w wartości portfela."""
     chart_df = df.dropna(subset=["wartosc_rynkowa"]).copy()
-    chart_df["udzial_pct"] = (
-        chart_df["wartosc_rynkowa"] / chart_df["wartosc_rynkowa"].sum() * 100
-    )
     label_col = "ticker_xtb" if "ticker_xtb" in chart_df.columns else "ticker_yahoo"
 
     fig = px.pie(
         chart_df,
         names=label_col,
         values="wartosc_rynkowa",
-        title="Struktura portfela (% wartości)",
+        title=f"Struktura portfela (% wartości, {waluta})",
         hole=0.35,
     )
     fig.update_traces(textposition="inside", textinfo="percent+label")
@@ -58,7 +55,7 @@ def _build_pie_chart(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def _build_pnl_bar_chart(df: pd.DataFrame) -> go.Figure:
+def _build_pnl_bar_chart(df: pd.DataFrame, waluta: str) -> go.Figure:
     """Wykres słupkowy – zysk/strata na poszczególnych aktywach."""
     chart_df = df.dropna(subset=["zysk_strata"]).copy()
     label_col = "ticker_xtb" if "ticker_xtb" in chart_df.columns else "ticker_yahoo"
@@ -76,67 +73,52 @@ def _build_pnl_bar_chart(df: pd.DataFrame) -> go.Figure:
         ]
     )
     fig.update_layout(
-        title="Zysk / strata na pozycjach",
+        title=f"Zysk / strata na pozycjach ({waluta})",
         xaxis_title="Instrument",
-        yaxis_title="Zysk / strata",
+        yaxis_title=f"Zysk / strata ({waluta})",
         height=450,
     )
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     return fig
 
 
-def _display_summary_table(df: pd.DataFrame) -> None:
+def _display_summary_table(df: pd.DataFrame, waluta: str) -> None:
     """Tabela podsumowująca wszystkie otwarte pozycje."""
     display = df.copy()
     rename = {
         "ticker_xtb": "Ticker XTB",
         "ticker_yahoo": "Ticker Yahoo",
+        "waluta": "Waluta",
         "ilosc": "Ilość",
-        "srednia_cena": "Śr. cena zakupu",
+        "srednia_cena": "Śr. cena (waluta instr.)",
         "cena_rynkowa": "Cena rynkowa",
-        "koszt_pozycji": "Koszt pozycji",
-        "wartosc_rynkowa": "Wartość rynkowa",
-        "zysk_strata": "Zysk / strata",
+        "koszt_pozycji": f"Koszt ({waluta})",
+        "wartosc_rynkowa": f"Wartość ({waluta})",
+        "zysk_strata": f"Zysk / strata ({waluta})",
         "roi_pct": "ROI %",
     }
     display = display.rename(columns={k: v for k, v in rename.items() if k in display.columns})
 
-    numeric_cols = [
-        "Ilość",
-        "Śr. cena zakupu",
-        "Cena rynkowa",
-        "Koszt pozycji",
-        "Wartość rynkowa",
-        "Zysk / strata",
-        "ROI %",
-    ]
+    numeric_cols = [c for c in display.columns if c not in ("Ticker XTB", "Ticker Yahoo", "Waluta")]
     for col in numeric_cols:
-        if col in display.columns:
-            display[col] = display[col].map(lambda x: round(x, 2) if pd.notna(x) else None)
+        display[col] = display[col].map(lambda x: round(x, 2) if pd.notna(x) else None)
 
     st.dataframe(display, use_container_width=True, hide_index=True)
 
 
-# --- Sidebar: wgrywanie pliku ---
+# --- Sidebar ---
 with st.sidebar:
     st.header("Import z XTB")
     uploaded = st.file_uploader(
         "Wgraj eksport z XTB (Excel lub CSV)",
         type=["csv", "xlsx", "xls"],
-        help=(
-            "Natywny Excel z platformy XTB (arkusz „Cash Operations”) "
-            "lub uproszczony plik z kolumnami: Ticker, Ilość, Średnia cena zakupu"
-        ),
     )
     st.markdown(
         """
-        **Eksport XTB:** w platformie pobierz raport Excel
-        (np. *Cash Operations* + *Closed Positions*).
+        **Eksport XTB:** arkusz *Cash Operations* (konto PLN lub EUR).
 
-        Aplikacja sama wyliczy **otwarte pozycje** z historii zakupów i sprzedaży.
-
-        **Wskazówka:** jeśli Yahoo nie znajdzie ceny,
-        sprawdź mapowanie w `importer.py` → `TICKER_MAP`.
+        Program wykrywa **walutę konta** i **walutę każdej pozycji**,
+        a sumy przelicza do wybranej waluty wyświetlania.
         """
     )
 
@@ -150,52 +132,89 @@ except (ValueError, pd.errors.ParserError) as exc:
     st.error(f"Błąd importu pliku: {exc}")
     st.stop()
 
-with st.spinner("Pobieranie aktualnych cen z Yahoo Finance…"):
-    analyzed = analyze_portfolio(portfolio)
-    summary = portfolio_summary(analyzed)
+waluta_konta = portfolio.attrs.get("waluta_konta", "EUR")
+numer_konta = portfolio.attrs.get("numer_konta")
 
-# --- Metryki główne ---
+with st.sidebar:
+    st.divider()
+    st.subheader("Waluta")
+    if numer_konta:
+        st.caption(f"Konto: {numer_konta}")
+    st.info(f"Wykryta waluta konta: **{waluta_konta}**")
+    waluta_wyswietlania = st.selectbox(
+        "Przelicz sumy na walutę",
+        WALUTY_WSPIERANE,
+        index=WALUTY_WSPIERANE.index(waluta_konta)
+        if waluta_konta in WALUTY_WSPIERANE
+        else 0,
+    )
+
+with st.spinner("Pobieranie cen i kursów walut…"):
+    try:
+        analyzed = analyze_portfolio(portfolio, waluta_wyswietlania=waluta_wyswietlania)
+        summary = portfolio_summary(analyzed)
+    except ValueError as exc:
+        st.error(f"Błąd analizy: {exc}")
+        st.stop()
+
+waluta = str(summary["waluta_wyswietlania"])
+
+# Podgląd kursów FX
+kursy = analyzed.attrs.get("kursy_fx", {})
+if len(kursy) > 1:
+    with st.expander("Kursy użyte do przeliczenia"):
+        kursy_txt = ", ".join(
+            f"1 {w} = {kursy[w]:.4f} {waluta}" for w in sorted(kursy) if w != waluta
+        )
+        st.caption(kursy_txt or "—")
+
 st.subheader("Podsumowanie portfela")
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric(
-        label="Całkowita wartość",
-        value=_format_currency(summary["wartosc_calkowita"]),
-    )
+    st.metric("Całkowita wartość", _format_currency(summary["wartosc_calkowita"], waluta))
 with col2:
-    st.metric(
-        label="Łączny koszt (baza)",
-        value=_format_currency(summary["koszt_calkowity"]),
-    )
+    st.metric("Łączny koszt", _format_currency(summary["koszt_calkowity"], waluta))
 with col3:
     pnl = summary["zysk_strata_laczny"]
     st.metric(
-        label="Łączny zysk / strata",
-        value=_format_currency(pnl),
+        "Łączny zysk / strata",
+        _format_currency(pnl, waluta),
         delta=f"{summary['roi_laczny_pct']:.2f}% ROI",
         delta_color=_pnl_color(pnl),
     )
+with col4:
+    st.metric("Waluta konta", waluta_konta)
 
-# Ostrzeżenie o brakujących cenach
 missing_prices = analyzed["cena_rynkowa"].isna().sum()
 if missing_prices > 0:
     tickers = analyzed.loc[analyzed["cena_rynkowa"].isna(), "ticker_yahoo"].tolist()
-    st.warning(
-        f"Nie udało się pobrać ceny dla {missing_prices} pozycji: "
-        f"{', '.join(tickers)}. Sprawdź mapowanie w importer.py."
-    )
+    st.warning(f"Brak ceny Yahoo dla: {', '.join(tickers)}. Sprawdź mapowanie w importer.py.")
 
-# --- Wykresy ---
 st.subheader("Wizualizacje")
 chart_col1, chart_col2 = st.columns(2)
-
 with chart_col1:
-    st.plotly_chart(_build_pie_chart(analyzed), use_container_width=True)
-
+    st.plotly_chart(_build_pie_chart(analyzed, waluta), use_container_width=True)
 with chart_col2:
-    st.plotly_chart(_build_pnl_bar_chart(analyzed), use_container_width=True)
+    st.plotly_chart(_build_pnl_bar_chart(analyzed, waluta), use_container_width=True)
 
-# --- Tabela pozycji ---
 st.subheader("Otwarte pozycje")
-_display_summary_table(analyzed)
+_display_summary_table(analyzed, waluta)
+
+# Propozycje rozwoju
+with st.expander("💡 Pomysły na kolejne funkcje"):
+    st.markdown(
+        """
+        | Priorytet | Funkcja | Opis |
+        |-----------|---------|------|
+        | Wysoki | **Łączenie kont PLN + EUR** | Wgranie dwóch plików i jeden widok całego majątku |
+        | Wysoki | **Historia zamkniętych pozycji** | Arkusz *Closed Positions* – statystyki realizowanych zysków |
+        | Średni | **Wykres wartości w czasie** | Saldo portfela po każdej transakcji z Cash Operations |
+        | Średni | **Dywidendy i opłaty** | Osobna sekcja kosztów (spread, swap, prowizje) |
+        | Średni | **Alokacja geograficzna** | % portfela: USA / Europa / Polska na podstawie tickera |
+        | Średni | **Eksport do PDF/Excel** | Raport miesięczny jednym kliknięciem |
+        | Niski | **Alerty cenowe** | Powiadomienie gdy pozycja +/- X% od zakupu |
+        | Niski | **Porównanie z WIG/WIG20** | Benchmark polskiego rynku dla konta PLN |
+        | Niski | **API zamiast pliku** | Automatyczny import (jeśli XTB udostępni) |
+        """
+    )

@@ -55,9 +55,16 @@ Przeglądarka otworzy się pod adresem `http://localhost:8501`.
 1. W panelu bocznym (**sidebar**) kliknij **Browse files**.
 2. Wybierz **natywny eksport Excel z platformy XTB** (arkusze m.in. *Cash Operations*)
    **albo** uproszczony CSV/Excel z kolumnami: Ticker, Ilość, Średnia cena zakupu.
-3. Dashboard wyliczy otwarte pozycje, pobierze ceny z Yahoo Finance i pokaże wykresy.
+3. Dashboard wyliczy otwarte pozycje, wykryje **walutę konta** (PLN/EUR) i przeliczy sumy na wybraną walutę.
 
 > **Uwaga:** eksport XTB zawiera numer konta – nie commituj go do publicznego repozytorium.
+
+### Waluty
+
+- **Konto PLN** (`pln_import.xlsx`) – tickery `.PL`, waluta konta wykrywana z konwersji/historii.
+- **Konto EUR** (`import_xtb.xlsx`) – tickery `.DE`, `.US` itd.
+- Każda pozycja ma własną walutę notowań; sumy portfela są przeliczane kursami Yahoo (np. EURPLN=X).
+- W sidebarze możesz zmienić walutę wyświetlania (PLN / EUR / USD / GBP).
 
 ### Uruchomienie w Cursor (Windows, bez aktywacji venv)
 

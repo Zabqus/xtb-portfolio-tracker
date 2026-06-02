@@ -16,7 +16,9 @@ env/
 
 # Lokalne eksporty XTB (numer konta, historia transakcji)
 import_xtb.xlsx
+pln_import.xlsx
 *_xtb*.xlsx
+*_import.xlsx
 
 # System / edytor
 .DS_Store
