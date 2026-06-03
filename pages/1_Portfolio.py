@@ -87,6 +87,12 @@ pick = st.selectbox(
     tickers,
     key="portfolio_pick_ticker",
 )
-if st.button("Otwórz analizę pozycji →", type="primary"):
-    set_selected_ticker(pick)
-    st.switch_page("pages/2_Pozycja.py")
+col_a, col_b = st.columns(2)
+with col_a:
+    if st.button("Analiza pozycji →", type="primary"):
+        set_selected_ticker(pick)
+        st.switch_page("pages/2_Pozycja.py")
+with col_b:
+    if st.button("Analiza techniczna →"):
+        set_selected_ticker(pick)
+        st.switch_page("pages/4_Analiza.py")

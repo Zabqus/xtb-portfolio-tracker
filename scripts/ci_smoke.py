@@ -22,6 +22,7 @@ def main() -> int:
         "core.closed_analysis",
         "core.trade_analytics",
         "core.cost_basis",
+        "core.technicals",
         "core.session",
         "ui.charts",
         "ui.formatters",
@@ -30,6 +31,7 @@ def main() -> int:
         "ui.position_charts",
         "ui.history_charts",
         "ui.analytics_charts",
+        "ui.technical_charts",
     ]
 
     for name in modules:

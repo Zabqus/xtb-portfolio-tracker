@@ -10,7 +10,8 @@ xtb_portfolio_tracker/
 ├── pages/
 │   ├── 1_Portfolio.py      # Otwarte pozycje
 │   ├── 2_Pozycja.py        # Analiza pojedynczego tickera
-│   └── 3_Historia.py       # Timeline, zamknięte pozycje, transakcje
+│   ├── 3_Historia.py       # Timeline, zamknięte pozycje, transakcje
+│   └── 4_Analiza.py        # Analiza techniczna (pandas_ta)
 ├── core/
 │   ├── importer.py         # Parse XTB Excel/CSV
 │   ├── importer_maps.py    # Ticker → Yahoo
@@ -23,7 +24,8 @@ xtb_portfolio_tracker/
 │   ├── timeline.py         # portfolio value day-by-day
 │   ├── closed_analysis.py  # best/worst closed trades
 │   ├── trade_analytics.py  # holding period, win rate, round-trips
-│   └── cost_basis.py       # avg price history per ticker
+│   ├── cost_basis.py       # avg price history per ticker
+│   └── technicals.py       # MA, RSI, MACD, Bollinger (pandas_ta)
 │   ├── currencies.py       # FX detection & conversion
 │   ├── market_data.py      # Cached last prices
 │   └── session.py          # st.session_state cache
