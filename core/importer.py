@@ -5,7 +5,6 @@ Import XTB reports (Cash Operations, Closed Positions) and simplified CSV/Excel.
 from __future__ import annotations
 
 import io
-import re
 from dataclasses import dataclass
 from typing import BinaryIO, Union
 
@@ -13,17 +12,13 @@ import pandas as pd
 
 from core.currencies import currency_from_ticker, detect_account_currency, read_account_number
 from core.importer_maps import map_ticker_to_yahoo
+from core.transactions import parse_cash_operations_trades
 
 XTB_CASH_OPERATIONS_SHEET = "Cash Operations"
 XTB_CLOSED_POSITIONS_SHEET = "Closed Positions"
 XTB_HEADER_ROW = 4
 
 XTB_TRADE_TYPES = ("Stock purchase", "Stock sell")
-
-XTB_TRADE_COMMENT_RE = re.compile(
-    r"^(OPEN|CLOSE)\s+BUY\s+([\d.]+)(?:/[\d.]+)?\s+@\s+([\d.]+)",
-    re.IGNORECASE,
-)
 
 MIN_POSITION_QTY = 1e-6
 
@@ -51,6 +46,7 @@ class XTBReport:
 
     open_positions: pd.DataFrame
     closed_positions: pd.DataFrame | None
+    cash_operations: pd.DataFrame | None
     account_currency: str
     account_number: str | None
     filename: str
@@ -60,38 +56,22 @@ def _is_xtb_native_excel(sheet_names: list[str]) -> bool:
     return XTB_CASH_OPERATIONS_SHEET in sheet_names
 
 
-def _parse_trade_comment(comment: str) -> tuple[str, float, float] | None:
-    if not isinstance(comment, str):
-        return None
-    match = XTB_TRADE_COMMENT_RE.match(comment.strip())
-    if not match:
-        return None
-    return match.group(1).upper(), float(match.group(2)), float(match.group(3))
-
-
 def _aggregate_open_positions_from_cash_ops(df: pd.DataFrame) -> pd.DataFrame:
     """Buduje otwarte pozycje z operacji Stock purchase / Stock sell."""
-    required_cols = {"Type", "Ticker", "Comment", "Time"}
-    missing = required_cols - set(df.columns)
-    if missing:
-        raise ValueError(f"Cash Operations – missing columns: {', '.join(sorted(missing))}")
-
-    trades = df[df["Type"].isin(XTB_TRADE_TYPES)].copy()
-    trades = trades.dropna(subset=["Ticker"])
-    trades["Time"] = pd.to_datetime(trades["Time"], errors="coerce")
-    trades = trades.sort_values("Time")
+    trades = parse_cash_operations_trades(df)
+    if trades.empty:
+        raise ValueError(
+            "No open positions found in Cash Operations. "
+            "Ensure the export covers a period with active purchases."
+        )
 
     positions: dict[str, dict[str, float]] = {}
 
     for _, row in trades.iterrows():
-        parsed = _parse_trade_comment(row["Comment"])
-        if parsed is None:
-            continue
-
-        side, quantity, price = parsed
-        ticker = str(row["Ticker"]).strip().upper()
-        if not ticker or ticker == "NAN":
-            continue
+        ticker = row["ticker_xtb"]
+        quantity = float(row["quantity"])
+        price = float(row["price"])
+        side = row["side"]
 
         if ticker not in positions:
             positions[ticker] = {"qty": 0.0, "cost": 0.0}
@@ -306,6 +286,7 @@ def parse_xtb_report(
             return XTBReport(
                 open_positions=open_positions,
                 closed_positions=closed_positions,
+                cash_operations=cash_ops,
                 account_currency=account_currency,
                 account_number=account_number,
                 filename=filename,
@@ -319,6 +300,7 @@ def parse_xtb_report(
         return XTBReport(
             open_positions=open_positions,
             closed_positions=None,
+            cash_operations=None,
             account_currency="PLN",
             account_number=None,
             filename=filename,
@@ -333,6 +315,7 @@ def parse_xtb_report(
         return XTBReport(
             open_positions=open_positions,
             closed_positions=None,
+            cash_operations=None,
             account_currency="PLN",
             account_number=None,
             filename=filename,
