@@ -31,7 +31,7 @@ if report is None:
 
         - **Portfolio** – otwarte pozycje, wykresy, metryki PnL
         - **Pozycja** – wykres 1Y/3Y/5Y, fundamenty, benchmark, timing wejścia
-        - **Historia** – timeline portfela, zamknięte pozycje, transakcje
+        - **Historia** – timeline, trade analytics, cost basis, zamknięte pozycje
 
         ### Wskazówki
 

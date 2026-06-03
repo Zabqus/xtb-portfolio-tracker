@@ -7,8 +7,20 @@ import streamlit as st
 from streamlit_extras.metric_cards import style_metric_cards
 
 from core.closed_analysis import closed_positions_summary, get_top_trades
-from core.session import get_portfolio_timeline, get_report
+from core.cost_basis import get_current_cost_basis
+from core.session import (
+    get_cost_basis_history,
+    get_portfolio_timeline,
+    get_report,
+    get_trade_analytics,
+)
 from core.transactions import parse_cash_operations_trades
+from ui.analytics_charts import (
+    build_cost_basis_chart,
+    build_holding_period_chart,
+    build_round_trip_pnl_chart,
+    build_win_loss_comparison,
+)
 from ui.charts import build_closed_pnl_chart
 from ui.formatters import format_currency, pnl_delta_color
 from ui.history_charts import build_cumulative_realized_pnl, build_portfolio_timeline_chart
@@ -28,8 +40,13 @@ if report is None:
 currency = report.account_currency
 closed = report.closed_positions
 
-tab_timeline, tab_closed, tab_trades = st.tabs(
-    ["Timeline portfela", "Zamknięte pozycje", "Historia transakcji"]
+tab_timeline, tab_analytics, tab_closed, tab_trades = st.tabs(
+    [
+        "Timeline portfela",
+        "Trade Analytics",
+        "Zamknięte pozycje",
+        "Historia transakcji",
+    ]
 )
 
 # --- Timeline ---
@@ -75,6 +92,143 @@ with tab_timeline:
                 build_portfolio_timeline_chart(timeline, currency),
                 use_container_width=True,
             )
+
+# --- Trade Analytics ---
+with tab_analytics:
+    st.subheader("Statystyki tradingowe")
+
+    if report.cash_operations is None:
+        st.warning("Wymagany natywny eksport Excel z arkuszem Cash Operations.")
+    else:
+        with st.spinner("Analiza transakcji i cost basis…"):
+            summary, round_trips = get_trade_analytics()
+            cost_history = get_cost_basis_history()
+
+        has_round_trips = round_trips is not None and not round_trips.empty
+        if summary is None or (summary.closed_trades == 0 and not has_round_trips):
+            st.info("Brak zamkniętych round-tripów w wybranym okresie eksportu.")
+        else:
+            pf = summary.profit_factor
+            pf_label = f"{pf:.2f}" if pf < 100 else "∞"
+
+            m1, m2, m3, m4, m5, m6 = st.columns(6)
+            with m1:
+                st.metric("Round-tripy", summary.closed_trades)
+            with m2:
+                st.metric("Win rate", f"{summary.win_rate_pct:.1f}%")
+            with m3:
+                st.metric("Śr. czas trzymania", f"{summary.avg_holding_days:.1f} dni")
+            with m4:
+                st.metric("Średni zysk", format_currency(summary.avg_win, currency))
+            with m5:
+                st.metric("Średnia strata", format_currency(summary.avg_loss, currency))
+            with m6:
+                st.metric("Profit factor", pf_label)
+
+            st.caption(
+                f"Mediana czasu trzymania: **{summary.median_holding_days:.1f} dni** · "
+                f"Łączny zrealizowany PnL (round-tripy): "
+                f"**{format_currency(summary.total_realized_pnl, currency)}**"
+            )
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.plotly_chart(
+                    build_win_loss_comparison(summary.avg_win, summary.avg_loss, currency),
+                    use_container_width=True,
+                )
+            with c2:
+                if has_round_trips:
+                    st.plotly_chart(
+                        build_holding_period_chart(round_trips),
+                        use_container_width=True,
+                    )
+
+            if has_round_trips:
+                st.plotly_chart(
+                    build_round_trip_pnl_chart(round_trips),
+                    use_container_width=True,
+                )
+
+                st.markdown("### Round-tripy (FIFO z Cash Operations)")
+                rt_display = round_trips.copy()
+            rt_display = rt_display.rename(
+                columns={
+                    "ticker_xtb": "Ticker",
+                    "open_time": "Otwarcie",
+                    "close_time": "Zamknięcie",
+                    "quantity": "Ilość",
+                    "open_price": "Cena wejścia",
+                    "close_price": "Cena wyjścia",
+                    "holding_days": "Dni",
+                    "realized_pnl": "PnL",
+                    "pnl_pct": "ROI %",
+                    "is_win": "Trafiona",
+                }
+            )
+            for col in ("PnL", "ROI %", "Dni", "Cena wejścia", "Cena wyjścia", "Ilość"):
+                if col in rt_display.columns:
+                    rt_display[col] = rt_display[col].map(
+                        lambda x: round(x, 2) if pd.notna(x) else None
+                    )
+                st.dataframe(rt_display, use_container_width=True, hide_index=True)
+
+        st.divider()
+        st.subheader("Cost basis — historia średniej ceny")
+
+        if cost_history is None or cost_history.empty:
+            st.info("Brak historii cost basis.")
+        else:
+            tickers_cb = sorted(cost_history["ticker_xtb"].unique())
+            selected_cb = st.selectbox("Ticker", tickers_cb, key="cost_basis_ticker")
+
+            st.plotly_chart(
+                build_cost_basis_chart(cost_history, selected_cb),
+                use_container_width=True,
+            )
+
+            ticker_events = cost_history[cost_history["ticker_xtb"] == selected_cb].copy()
+            show_cb = ticker_events[
+                [
+                    "trade_time",
+                    "event",
+                    "trade_qty",
+                    "trade_price",
+                    "quantity_after",
+                    "avg_price_after",
+                    "cost_basis_after",
+                ]
+            ].rename(
+                columns={
+                    "trade_time": "Czas",
+                    "event": "Zdarzenie",
+                    "trade_qty": "Ilość transakcji",
+                    "trade_price": "Cena transakcji",
+                    "quantity_after": "Ilość po",
+                    "avg_price_after": "Śr. cena po",
+                    "cost_basis_after": "Cost basis po",
+                }
+            )
+            for col in show_cb.columns:
+                if show_cb[col].dtype in ("float64", "float32"):
+                    show_cb[col] = show_cb[col].map(
+                        lambda x: round(x, 4) if pd.notna(x) else None
+                    )
+            st.dataframe(show_cb, use_container_width=True, hide_index=True)
+
+            st.markdown("### Aktualny cost basis (wszystkie otwarte)")
+            current = get_current_cost_basis(cost_history)
+            if not current.empty:
+                cur = current.rename(
+                    columns={
+                        "ticker_xtb": "Ticker",
+                        "quantity": "Ilość",
+                        "avg_price": "Śr. cena",
+                        "cost_basis": "Cost basis",
+                        "last_trade_time": "Ostatnia transakcja",
+                    }
+                )
+                st.dataframe(cur, use_container_width=True, hide_index=True)
 
 # --- Zamknięte pozycje ---
 with tab_closed:

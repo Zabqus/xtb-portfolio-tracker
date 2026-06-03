@@ -21,7 +21,9 @@ xtb_portfolio_tracker/
 │   ├── timing_score.py     # percentyl ceny zakupu (3M)
 │   ├── transactions.py     # parse Cash Operations trades
 │   ├── timeline.py         # portfolio value day-by-day
-│   └── closed_analysis.py  # best/worst closed trades
+│   ├── closed_analysis.py  # best/worst closed trades
+│   ├── trade_analytics.py  # holding period, win rate, round-trips
+│   └── cost_basis.py       # avg price history per ticker
 │   ├── currencies.py       # FX detection & conversion
 │   ├── market_data.py      # Cached last prices
 │   └── session.py          # st.session_state cache

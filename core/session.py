@@ -11,7 +11,10 @@ import streamlit as st
 
 from core.analyzer import analyze_portfolio
 from core.importer import XTBReport, parse_xtb_report
+from core.cost_basis import build_cost_basis_history
 from core.timeline import build_portfolio_timeline
+from core.trade_analytics import TradeAnalyticsSummary, compute_trade_analytics
+from core.transactions import parse_cash_operations_trades
 
 SESSION_DEFAULTS = {
     "file_signature": None,
@@ -23,6 +26,10 @@ SESSION_DEFAULTS = {
     "selected_ticker_xtb": None,
     "portfolio_timeline": None,
     "timeline_signature": None,
+    "cost_basis_history": None,
+    "trade_analytics_summary": None,
+    "round_trips": None,
+    "analytics_signature": None,
 }
 
 
@@ -65,6 +72,10 @@ def process_upload(uploaded_file) -> bool:
     st.session_state.analysis_signature = None
     st.session_state.portfolio_timeline = None
     st.session_state.timeline_signature = None
+    st.session_state.cost_basis_history = None
+    st.session_state.trade_analytics_summary = None
+    st.session_state.round_trips = None
+    st.session_state.analytics_signature = None
 
     try:
         uploaded_file.seek(0)
@@ -156,3 +167,36 @@ def get_portfolio_timeline() -> pd.DataFrame | None:
     st.session_state.portfolio_timeline = timeline
     st.session_state.timeline_signature = signature
     return timeline
+
+
+def _load_analytics_bundle() -> None:
+    """Ładuje cost basis + trade analytics jednym przebiegiem (cache w session)."""
+    report = get_report()
+    if report is None or report.cash_operations is None:
+        return
+
+    signature = st.session_state.file_signature
+    if st.session_state.analytics_signature == signature:
+        return
+
+    trades = parse_cash_operations_trades(report.cash_operations)
+    st.session_state.cost_basis_history = build_cost_basis_history(trades)
+    summary, round_trips = compute_trade_analytics(trades, report.closed_positions)
+    st.session_state.trade_analytics_summary = summary
+    st.session_state.round_trips = round_trips
+    st.session_state.analytics_signature = signature
+
+
+def get_trade_analytics() -> tuple[TradeAnalyticsSummary | None, pd.DataFrame | None]:
+    """Cache statystyk tradingowych i round-tripów FIFO."""
+    _load_analytics_bundle()
+    return (
+        st.session_state.trade_analytics_summary,
+        st.session_state.round_trips,
+    )
+
+
+def get_cost_basis_history() -> pd.DataFrame | None:
+    """Cache historii średniej ceny zakupu."""
+    _load_analytics_bundle()
+    return st.session_state.cost_basis_history
