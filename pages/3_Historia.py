@@ -25,7 +25,7 @@ from ui.charts import build_closed_pnl_chart
 from ui.formatters import format_currency, pnl_delta_color
 from ui.history_charts import build_cumulative_realized_pnl, build_portfolio_timeline_chart
 from ui.sidebar import render_import_sidebar
-from ui.tables import render_closed_positions_table
+from ui.tables import render_closed_positions_table, render_round_trips_table
 
 st.title("📜 Historia i zamknięte pozycje")
 
@@ -151,27 +151,13 @@ with tab_analytics:
                 )
 
                 st.markdown("### Round-tripy (FIFO z Cash Operations)")
-                rt_display = round_trips.copy()
-            rt_display = rt_display.rename(
-                columns={
-                    "ticker_xtb": "Ticker",
-                    "open_time": "Otwarcie",
-                    "close_time": "Zamknięcie",
-                    "quantity": "Ilość",
-                    "open_price": "Cena wejścia",
-                    "close_price": "Cena wyjścia",
-                    "holding_days": "Dni",
-                    "realized_pnl": "PnL",
-                    "pnl_pct": "ROI %",
-                    "is_win": "Trafiona",
-                }
-            )
-            for col in ("PnL", "ROI %", "Dni", "Cena wejścia", "Cena wyjścia", "Ilość"):
-                if col in rt_display.columns:
-                    rt_display[col] = rt_display[col].map(
-                        lambda x: round(x, 2) if pd.notna(x) else None
-                    )
-                st.dataframe(rt_display, use_container_width=True, hide_index=True)
+                st.caption(
+                    f"**{len(round_trips)} wierszy** = tyle zamkniętych fragmentów pozycji "
+                    "(każdy wiersz to jedno dopasowanie kupno → sprzedaż). "
+                    "To **jedna tabela**, nie wiele kopii. "
+                    "Różni się od zakładki *Zamknięte pozycje* (raport XTB, inny podział transakcji)."
+                )
+                render_round_trips_table(round_trips)
 
         st.divider()
         st.subheader("Cost basis — historia średniej ceny")
@@ -187,38 +173,39 @@ with tab_analytics:
                 use_container_width=True,
             )
 
-            ticker_events = cost_history[cost_history["ticker_xtb"] == selected_cb].copy()
-            show_cb = ticker_events[
-                [
-                    "trade_time",
-                    "event",
-                    "trade_qty",
-                    "trade_price",
-                    "quantity_after",
-                    "avg_price_after",
-                    "cost_basis_after",
-                ]
-            ].rename(
-                columns={
-                    "trade_time": "Czas",
-                    "event": "Zdarzenie",
-                    "trade_qty": "Ilość transakcji",
-                    "trade_price": "Cena transakcji",
-                    "quantity_after": "Ilość po",
-                    "avg_price_after": "Śr. cena po",
-                    "cost_basis_after": "Cost basis po",
-                }
-            )
-            for col in show_cb.columns:
-                if show_cb[col].dtype in ("float64", "float32"):
-                    show_cb[col] = show_cb[col].map(
-                        lambda x: round(x, 4) if pd.notna(x) else None
-                    )
-            st.dataframe(show_cb, use_container_width=True, hide_index=True)
+            with st.expander("Szczegóły zdarzeń (cost basis per ticker)"):
+                ticker_events = cost_history[cost_history["ticker_xtb"] == selected_cb].copy()
+                show_cb = ticker_events[
+                    [
+                        "trade_time",
+                        "event",
+                        "trade_qty",
+                        "trade_price",
+                        "quantity_after",
+                        "avg_price_after",
+                        "cost_basis_after",
+                    ]
+                ].rename(
+                    columns={
+                        "trade_time": "Czas",
+                        "event": "Zdarzenie",
+                        "trade_qty": "Ilość transakcji",
+                        "trade_price": "Cena transakcji",
+                        "quantity_after": "Ilość po",
+                        "avg_price_after": "Śr. cena po",
+                        "cost_basis_after": "Cost basis po",
+                    }
+                )
+                for col in show_cb.columns:
+                    if show_cb[col].dtype in ("float64", "float32"):
+                        show_cb[col] = show_cb[col].map(
+                            lambda x: round(x, 4) if pd.notna(x) else None
+                        )
+                st.dataframe(show_cb, use_container_width=True, hide_index=True)
 
-            st.markdown("### Aktualny cost basis (wszystkie otwarte)")
             current = get_current_cost_basis(cost_history)
             if not current.empty:
+                st.markdown("**Aktualny cost basis (otwarte pozycje)**")
                 cur = current.rename(
                     columns={
                         "ticker_xtb": "Ticker",
@@ -233,6 +220,10 @@ with tab_analytics:
 # --- Zamknięte pozycje ---
 with tab_closed:
     st.subheader("Zrealizowane zyski i straty")
+    st.caption(
+        "Dane z arkusza **Closed Positions** w eksporcie XTB (widok brokera). "
+        "Do analizy FIFO z historii transakcji użyj zakładki **Trade Analytics**."
+    )
 
     if closed is None or closed.empty:
         st.warning(
@@ -277,32 +268,28 @@ with tab_closed:
             use_container_width=True,
         )
 
-        best, worst = get_top_trades(closed, n=5)
-        bcol, wcol = st.columns(2)
+        with st.expander("🏆 Top 5 zyskowne / 📉 Top 5 stratne (podgląd)"):
+            best, worst = get_top_trades(closed, n=5)
+            bcol, wcol = st.columns(2)
 
-        def _trade_display(df: pd.DataFrame) -> pd.DataFrame:
-            show = df[["ticker_xtb", "instrument", "pnl", "close_time"]].copy()
-            if "purchase_value" in df.columns:
-                pv = df["purchase_value"].replace(0, pd.NA)
-                show["ROI %"] = (df["pnl"] / pv * 100).round(1)
-            show["pnl"] = show["pnl"].round(2)
-            return show
+            def _trade_display(df: pd.DataFrame) -> pd.DataFrame:
+                show = df[["ticker_xtb", "instrument", "pnl", "close_time"]].copy()
+                if "purchase_value" in df.columns:
+                    pv = df["purchase_value"].replace(0, pd.NA)
+                    show["ROI %"] = (df["pnl"] / pv * 100).round(1)
+                show["pnl"] = show["pnl"].round(2)
+                return show
 
-        with bcol:
-            st.markdown("### 🏆 Najlepsze transakcje")
-            if best.empty:
-                st.caption("—")
-            else:
-                st.dataframe(_trade_display(best), use_container_width=True, hide_index=True)
+            with bcol:
+                st.markdown("**Najlepsze**")
+                if not best.empty:
+                    st.dataframe(_trade_display(best), use_container_width=True, hide_index=True)
+            with wcol:
+                st.markdown("**Najgorsze**")
+                if not worst.empty:
+                    st.dataframe(_trade_display(worst), use_container_width=True, hide_index=True)
 
-        with wcol:
-            st.markdown("### 📉 Najgorsze transakcje")
-            if worst.empty:
-                st.caption("—")
-            else:
-                st.dataframe(_trade_display(worst), use_container_width=True, hide_index=True)
-
-        st.subheader("Wszystkie zamknięte pozycje")
+        st.subheader("Wszystkie zamknięte pozycje (XTB)")
         render_closed_positions_table(closed)
 
 # --- Historia transakcji ---

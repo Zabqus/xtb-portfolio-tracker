@@ -6,6 +6,33 @@ import pandas as pd
 import streamlit as st
 
 
+def render_round_trips_table(round_trips: pd.DataFrame) -> None:
+    """Jedna tabela round-tripów FIFO (Cash Operations)."""
+    if round_trips is None or round_trips.empty:
+        st.caption("Brak zamkniętych round-tripów w tym okresie.")
+        return
+
+    display = round_trips.copy().rename(
+        columns={
+            "ticker_xtb": "Ticker",
+            "open_time": "Otwarcie",
+            "close_time": "Zamknięcie",
+            "quantity": "Ilość",
+            "open_price": "Cena wejścia",
+            "close_price": "Cena wyjścia",
+            "holding_days": "Dni",
+            "realized_pnl": "PnL",
+            "pnl_pct": "ROI %",
+            "is_win": "Trafiona",
+        }
+    )
+    for col in ("PnL", "ROI %", "Dni", "Cena wejścia", "Cena wyjścia", "Ilość"):
+        if col in display.columns:
+            display[col] = display[col].map(lambda x: round(x, 2) if pd.notna(x) else None)
+
+    st.dataframe(display, use_container_width=True, hide_index=True)
+
+
 def render_open_positions_table(df: pd.DataFrame, currency: str) -> None:
     display = df.copy()
     rename = {
