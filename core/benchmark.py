@@ -85,14 +85,28 @@ def build_performance_comparison(
 
     symbol_used = bench_hist.attrs.get("symbol", benchmark_symbol)
 
-    stock = stock_hist.set_index("Date")["Close"]
-    bench = bench_hist.set_index("Date")["Close"]
+    def _daily_close(hist: pd.DataFrame) -> pd.Series:
+        df = hist.copy()
+        df["Date"] = pd.to_datetime(df["Date"]).dt.normalize()
+        return df.set_index("Date")["Close"].sort_index()
+
+    stock = _daily_close(stock_hist)
+    bench = _daily_close(bench_hist)
 
     stock_idx = normalize_to_index(stock)
     bench_idx = normalize_to_index(bench)
 
-    merged = pd.DataFrame({"instrument": stock_idx, "benchmark": bench_idx})
-    merged = merged.dropna(how="all").reset_index()
+    # Tylko wspólne sesje (unika pustego wyniku po dropna przy kalendarzach US/EU).
+    merged = pd.concat(
+        [stock_idx.rename("instrument"), bench_idx.rename("benchmark")],
+        axis=1,
+        join="inner",
+    ).dropna(how="any")
+
+    if merged.empty:
+        return pd.DataFrame(), benchmark_name, symbol_used
+
+    merged = merged.reset_index()
     date_col = merged.columns[0]
     if date_col != "date":
         merged = merged.rename(columns={date_col: "date"})

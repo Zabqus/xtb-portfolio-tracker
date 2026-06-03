@@ -5,7 +5,9 @@ Podstrona: głęboka analiza pojedynczej pozycji (wykres, fundamenty, benchmark,
 import streamlit as st
 
 from core.benchmark import build_performance_comparison, resolve_benchmark
+from core.analyst_consensus import fetch_analyst_consensus
 from core.fundamentals import fetch_fundamentals, format_market_cap
+from ui.analyst_consensus import render_analyst_consensus
 from core.history import PERIOD_OPTIONS, fetch_price_history
 from core.timing_score import compute_timing_score
 from core.session import (
@@ -107,9 +109,13 @@ with tab_chart:
 with tab_fund:
     with st.spinner("Pobieranie danych fundamentalnych…"):
         fund = fetch_fundamentals(yahoo)
+        consensus = fetch_analyst_consensus(yahoo)
 
     if fund.name:
         st.subheader(fund.name)
+
+    render_analyst_consensus(consensus, currency_hint=currency)
+    st.divider()
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -122,20 +128,17 @@ with tab_fund:
         st.metric("52W High", f"{fund.week_52_high:,.2f}" if fund.week_52_high else "—")
         st.metric("52W Low", f"{fund.week_52_low:,.2f}" if fund.week_52_low else "—")
 
-    c4, c5, c6 = st.columns(3)
+    c4, c5 = st.columns(2)
     with c4:
-        st.metric("Cena docelowa (śr.)", f"{fund.target_mean_price:,.2f}" if fund.target_mean_price else "—")
-    with c5:
-        st.metric("Cena bieżąca", f"{fund.current_price:,.2f}" if fund.current_price else "—")
-    with c6:
         st.metric("Dywidenda", f"{fund.dividend_yield:.2f}%" if fund.dividend_yield else "—")
+    with c5:
+        st.metric("Branża", fund.industry or "—")
 
-    if fund.industry:
-        st.caption(f"Branża: {fund.industry}")
-
-    if fund.target_mean_price and fund.current_price:
-        upside = (fund.target_mean_price / fund.current_price - 1) * 100
-        st.info(f"Potencjał do ceny docelowej analityków: **{upside:+.1f}%**")
+    if not fund.pe_ratio and not fund.market_cap and not consensus.has_data:
+        st.caption(
+            "ETF-y (np. XAIX.DE) zwykle nie mają P/E, kapitalizacji ani konsensusu analityków w Yahoo — "
+            "to normalne. Porównanie z indeksem: zakładka **vs Benchmark**."
+        )
 
 with tab_bench:
     with st.spinner("Porównanie z indeksem…"):
@@ -147,13 +150,16 @@ with tab_bench:
         )
 
     if merged.empty:
-        st.warning(f"Nie udało się pobrać danych benchmarku ({bench_name}).")
+        st.warning(
+            f"Brak wspólnych notowań dla **{yahoo}** i **{bench_name}** (`{bench_sym or '—'}`) "
+            f"w okresie {period_label}. Spróbuj inny horyzont lub sprawdź symbol Yahoo."
+        )
     else:
         st.caption(f"Indeks: **{bench_name}** (`{bench_sym}`) · ta sama skala czasu co wykres {period_label}")
 
-        last = merged.dropna(subset=["instrument", "benchmark"]).iloc[-1]
-        inst_ret = last["instrument"] - 100
-        bench_ret = last["benchmark"] - 100
+        last = merged.iloc[-1]
+        inst_ret = float(last["instrument"]) - 100
+        bench_ret = float(last["benchmark"]) - 100
         alpha = inst_ret - bench_ret
 
         b1, b2, b3 = st.columns(3)

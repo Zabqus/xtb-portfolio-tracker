@@ -38,9 +38,15 @@ def _safe_float(value) -> float | None:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
+def fetch_ticker_info(ticker: str) -> dict:
+    """Jedno wywołanie .info — współdzielone z analyst_consensus."""
+    return yf.Ticker(ticker).info or {}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
 def fetch_fundamentals(ticker: str) -> FundamentalsSnapshot:
     """Pobiera i mapuje pole .info z Yahoo Finance."""
-    info = yf.Ticker(ticker).info or {}
+    info = fetch_ticker_info(ticker)
 
     div = info.get("dividendYield")
     if div is not None and div < 1:

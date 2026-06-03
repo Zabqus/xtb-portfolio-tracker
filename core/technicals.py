@@ -1,7 +1,7 @@
 """
 Wskaźniki techniczne — MA, RSI, MACD, Bollinger Bands.
 
-Preferuje pandas_ta (Python 3.12+). Na Python 3.11 używa czystego pandas (bez C extensions).
+Kolejność silników: pandas_ta → TA-Lib (opcjonalnie) → czysty pandas.
 """
 
 from __future__ import annotations
@@ -30,9 +30,21 @@ except ImportError:
     ta = None
     HAS_PANDAS_TA = False
 
+try:
+    import talib
+
+    HAS_TALIB = True
+except ImportError:
+    talib = None
+    HAS_TALIB = False
+
 
 def engine_name() -> str:
-    return "pandas_ta" if HAS_PANDAS_TA else "pandas (fallback)"
+    if HAS_PANDAS_TA:
+        return "pandas_ta"
+    if HAS_TALIB:
+        return "TA-Lib"
+    return "pandas (fallback)"
 
 
 def _ohlcv_frame(history: pd.DataFrame) -> pd.DataFrame:
@@ -102,6 +114,27 @@ def _apply_pandas_native(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _apply_talib(df: pd.DataFrame) -> pd.DataFrame:
+    close = df["Close"].astype(float).values
+
+    df[COL_MA20] = talib.SMA(close, timeperiod=20)
+    df[COL_MA50] = talib.SMA(close, timeperiod=50)
+    df[COL_MA200] = talib.SMA(close, timeperiod=200)
+    df[COL_RSI] = talib.RSI(close, timeperiod=14)
+
+    macd, signal, hist = talib.MACD(close, fastperiod=12, slowperiod=26, signalperiod=9)
+    df[COL_MACD] = macd
+    df[COL_MACD_SIGNAL] = signal
+    df[COL_MACD_HIST] = hist
+
+    upper, mid, lower = talib.BBANDS(close, timeperiod=20, nbdevup=2, nbdevdn=2)
+    df[COL_BB_UPPER] = upper
+    df[COL_BB_MID] = mid
+    df[COL_BB_LOWER] = lower
+
+    return df
+
+
 def enrich_with_technicals(history: pd.DataFrame) -> pd.DataFrame:
     df = _ohlcv_frame(history)
     if df.empty or "Close" not in df.columns:
@@ -109,6 +142,8 @@ def enrich_with_technicals(history: pd.DataFrame) -> pd.DataFrame:
 
     if HAS_PANDAS_TA:
         df = _apply_pandas_ta(df)
+    elif HAS_TALIB:
+        df = _apply_talib(df)
     else:
         df = _apply_pandas_native(df)
 

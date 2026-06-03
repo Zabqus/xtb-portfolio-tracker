@@ -15,6 +15,7 @@ def main() -> int:
         "core.market_data",
         "core.history",
         "core.fundamentals",
+        "core.analyst_consensus",
         "core.benchmark",
         "core.timing_score",
         "core.transactions",
@@ -32,6 +33,7 @@ def main() -> int:
         "ui.history_charts",
         "ui.analytics_charts",
         "ui.technical_charts",
+        "ui.analyst_consensus",
     ]
 
     for name in modules:

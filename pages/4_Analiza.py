@@ -46,12 +46,14 @@ st.caption(
     f"Yahoo: **{yahoo}** · Silnik: **{engine_name()}** "
     "(MA20/50/200, RSI14, MACD, Bollinger)"
 )
-if engine_name() != "pandas_ta":
+if engine_name() == "pandas (fallback)":
     st.info(
-        "Biblioteka **pandas_ta** wymaga Pythona **3.12+**. "
-        "Używasz fallbacku w czystym **pandas** (te same wskaźniki). "
-        "Aby włączyć pandas_ta: zaktualizuj venv do Python 3.12 i `pip install pandas-ta`."
+        "Silnik: czysty **pandas**. Aby przyspieszyć obliczenia: "
+        "**pandas-ta** (Python 3.12+: `pip install pandas-ta`) lub "
+        "**TA-Lib** (najpierw biblioteka C, potem `pip install TA-Lib` — patrz README)."
     )
+elif engine_name() == "TA-Lib":
+    st.caption("Wskaźniki liczone przez **TA-Lib** (natywna biblioteka C).")
 
 period_label = st.radio(
     "Horyzont (min. ~200 sesji dla MA200)",
