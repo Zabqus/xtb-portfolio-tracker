@@ -11,6 +11,7 @@ import streamlit as st
 
 from core.analyzer import analyze_portfolio
 from core.importer import XTBReport, parse_xtb_report
+from core.timeline import build_portfolio_timeline
 
 SESSION_DEFAULTS = {
     "file_signature": None,
@@ -20,6 +21,8 @@ SESSION_DEFAULTS = {
     "analysis_signature": None,
     "parse_error": None,
     "selected_ticker_xtb": None,
+    "portfolio_timeline": None,
+    "timeline_signature": None,
 }
 
 
@@ -60,6 +63,8 @@ def process_upload(uploaded_file) -> bool:
     st.session_state.file_signature = signature
     st.session_state.analyzed_open = None
     st.session_state.analysis_signature = None
+    st.session_state.portfolio_timeline = None
+    st.session_state.timeline_signature = None
 
     try:
         uploaded_file.seek(0)
@@ -132,3 +137,22 @@ def get_position_row(ticker_xtb: str) -> pd.Series | None:
     if not mask.any():
         return None
     return analyzed.loc[mask].iloc[0]
+
+
+def get_portfolio_timeline() -> pd.DataFrame | None:
+    """Cache timeline portfela (wymaga natywnego Cash Operations w raporcie)."""
+    report = get_report()
+    if report is None or report.cash_operations is None:
+        return None
+
+    signature = st.session_state.file_signature
+    if (
+        st.session_state.portfolio_timeline is not None
+        and st.session_state.timeline_signature == signature
+    ):
+        return st.session_state.portfolio_timeline
+
+    timeline = build_portfolio_timeline(report.cash_operations)
+    st.session_state.portfolio_timeline = timeline
+    st.session_state.timeline_signature = signature
+    return timeline

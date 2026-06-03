@@ -81,23 +81,6 @@ def portfolio_summary(analyzed: pd.DataFrame) -> dict[str, float | str]:
 
 def closed_positions_summary(closed: pd.DataFrame) -> dict[str, float | int]:
     """Statystyki zamkniętych pozycji z arkusza XTB."""
-    if closed is None or closed.empty or "pnl" not in closed.columns:
-        return {
-            "count": 0,
-            "total_pnl": 0.0,
-            "winners": 0,
-            "losers": 0,
-            "win_rate_pct": 0.0,
-        }
+    from core.closed_analysis import closed_positions_summary as _summary
 
-    pnl = closed["pnl"].dropna()
-    winners = int((pnl > 0).sum())
-    losers = int((pnl < 0).sum())
-
-    return {
-        "count": len(closed),
-        "total_pnl": float(pnl.sum()),
-        "winners": winners,
-        "losers": losers,
-        "win_rate_pct": float(winners / len(pnl) * 100) if len(pnl) else 0.0,
-    }
+    return _summary(closed)

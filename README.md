@@ -10,7 +10,7 @@ xtb_portfolio_tracker/
 ├── pages/
 │   ├── 1_Portfolio.py      # Otwarte pozycje
 │   ├── 2_Pozycja.py        # Analiza pojedynczego tickera
-│   └── 3_Closed_Positions.py
+│   └── 3_Historia.py       # Timeline, zamknięte pozycje, transakcje
 ├── core/
 │   ├── importer.py         # Parse XTB Excel/CSV
 │   ├── importer_maps.py    # Ticker → Yahoo
@@ -19,6 +19,9 @@ xtb_portfolio_tracker/
 │   ├── fundamentals.py     # yfinance .info
 │   ├── benchmark.py        # vs S&P 500 / WIG20
 │   ├── timing_score.py     # percentyl ceny zakupu (3M)
+│   ├── transactions.py     # parse Cash Operations trades
+│   ├── timeline.py         # portfolio value day-by-day
+│   └── closed_analysis.py  # best/worst closed trades
 │   ├── currencies.py       # FX detection & conversion
 │   ├── market_data.py      # Cached last prices
 │   └── session.py          # st.session_state cache
@@ -39,7 +42,7 @@ cd D:\xtb_portfolio_tracker
 .venv\Scripts\python -m streamlit run main.py
 ```
 
-Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → przejdź do **Portfolio** lub **Closed Positions**.
+Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → **Portfolio**, **Pozycja** lub **Historia**.
 
 ## Funkcje
 
