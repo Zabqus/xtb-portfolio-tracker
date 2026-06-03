@@ -2,71 +2,30 @@
 
 Lokalny dashboard (Streamlit) do monitorowania portfela akcji i ETF-ów z brokera XTB.
 
-## Wymagania
+## Struktura projektu
 
-- Python 3.10+
-- JetBrains PyCharm (Community lub Professional)
-
-## Uruchomienie w PyCharm – krok po kroku
-
-### 1. Otwórz projekt
-
-1. Uruchom **PyCharm**.
-2. **File → Open** i wybierz folder `xtb_portfolio_tracker`.
-3. Potwierdź otwarcie jako projekt.
-
-### 2. Skonfiguruj interpreter (venv)
-
-1. **File → Settings** (Windows/Linux) lub **PyCharm → Preferences** (macOS).
-2. **Project: xtb_portfolio_tracker → Python Interpreter**.
-3. Kliknij ikonę koła zębatego → **Add Interpreter → Add Local Interpreter**.
-4. Wybierz **Existing** i wskaż interpreter z folderu `.venv` w projekcie  
-   (np. `xtb_portfolio_tracker\.venv\Scripts\python.exe` na Windows).
-5. Jeśli `.venv` nie istnieje: **New → Virtualenv**, lokalizacja w katalogu projektu, Python 3.10+.
-
-### 3. Zainstaluj zależności
-
-W terminalu PyCharm (**View → Tool Windows → Terminal**), upewnij się, że venv jest aktywny:
-
-```bash
-pip install -r requirements.txt
+```
+xtb_portfolio_tracker/
+├── main.py                 # Strona główna
+├── pages/
+│   ├── 1_Portfolio.py      # Otwarte pozycje
+│   └── 2_Closed_Positions.py
+├── core/
+│   ├── importer.py         # Parse XTB Excel/CSV
+│   ├── importer_maps.py    # Ticker → Yahoo
+│   ├── analyzer.py         # PnL, ROI, summaries
+│   ├── currencies.py       # FX detection & conversion
+│   ├── market_data.py      # Cached yfinance (@st.cache_data)
+│   └── session.py          # st.session_state cache
+├── ui/
+│   ├── sidebar.py          # Upload + currency settings
+│   ├── charts.py           # Plotly charts
+│   ├── formatters.py       # Currency / metric styling
+│   └── tables.py           # DataFrames with Polish headers
+└── requirements.txt
 ```
 
-### 4. Uruchom aplikację
-
-**Opcja A – terminal:**
-
-```bash
-streamlit run main.py
-```
-
-Przeglądarka otworzy się pod adresem `http://localhost:8501`.
-
-**Opcja B – konfiguracja Run w PyCharm:**
-
-1. **Run → Edit Configurations → + → Python**.
-2. **Script path:** zostaw puste; w **Module name** wpisz: `streamlit`.
-3. **Parameters:** `run main.py`.
-4. **Working directory:** katalog główny projektu.
-5. Uruchom zielonym przyciskiem **Run**.
-
-### 5. Wgraj raport XTB
-
-1. W panelu bocznym (**sidebar**) kliknij **Browse files**.
-2. Wybierz **natywny eksport Excel z platformy XTB** (arkusze m.in. *Cash Operations*)
-   **albo** uproszczony CSV/Excel z kolumnami: Ticker, Ilość, Średnia cena zakupu.
-3. Dashboard wyliczy otwarte pozycje, wykryje **walutę konta** (PLN/EUR) i przeliczy sumy na wybraną walutę.
-
-> **Uwaga:** eksport XTB zawiera numer konta – nie commituj go do publicznego repozytorium.
-
-### Waluty
-
-- **Konto PLN** (`pln_import.xlsx`) – tickery `.PL`, waluta konta wykrywana z konwersji/historii.
-- **Konto EUR** (`import_xtb.xlsx`) – tickery `.DE`, `.US` itd.
-- Każda pozycja ma własną walutę notowań; sumy portfela są przeliczane kursami Yahoo (np. EURPLN=X).
-- W sidebarze możesz zmienić walutę wyświetlania (PLN / EUR / USD / GBP).
-
-### Uruchomienie w Cursor (Windows, bez aktywacji venv)
+## Uruchomienie (Cursor / terminal)
 
 ```powershell
 cd D:\xtb_portfolio_tracker
@@ -74,20 +33,25 @@ cd D:\xtb_portfolio_tracker
 .venv\Scripts\python -m streamlit run main.py
 ```
 
-## Przykładowy plik testowy
+Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → przejdź do **Portfolio** lub **Closed Positions**.
 
-W folderze `data/` znajduje się `przyklad_portfela.csv` do szybkiego testu.
+## Funkcje
 
-## Struktura projektu
+- **Multi-page** – dane w `st.session_state` (plik parsowany raz, nie przy każdym kliknięciu)
+- **Waluta konta** – auto-wykrywanie PLN/EUR (konwersje w Cash Operations, tickery `.PL`)
+- **Przeliczanie** – sumy w PLN / EUR / USD / GBP (kursy Yahoo, cache 1h)
+- **Closed Positions** – arkusz z eksportu XTB, statystyki PnL i win rate
+- **Cache cen** – `yfinance` przez `@st.cache_data` w `core/market_data.py`
 
-| Plik | Opis |
-|------|------|
-| `importer.py` | Parsowanie CSV/Excel, mapowanie tickerów XTB → Yahoo |
-| `analizator.py` | Pobieranie cen (yfinance), ROI, zysk/strata |
-| `main.py` | Interfejs Streamlit |
-| `requirements.txt` | Zależności Python |
+## Eksport XTB
+
+Natywny plik Excel z arkuszami:
+
+- **Cash Operations** – otwarte pozycje (wyliczane z historii zakupów/sprzedaży)
+- **Closed Positions** – zamknięte transakcje
+
+> Nie commituj plików eksportu (`import_xtb.xlsx`, `pln_import.xlsx`) – zawierają numer konta.
 
 ## Mapowanie tickerów
 
-Tickery z XTB często wymagają sufiksu giełdy dla Yahoo (np. `VWCE` → `VWCE.DE`).  
-Edytuj słownik `TICKER_MAP` w pliku `importer.py`.
+Edytuj `core/importer_maps.py` (np. `VWCE` → `VWCE.DE`, `XTB.PL` → `XTB.WA`).
