@@ -9,17 +9,23 @@ xtb_portfolio_tracker/
 ├── main.py                 # Strona główna
 ├── pages/
 │   ├── 1_Portfolio.py      # Otwarte pozycje
-│   └── 2_Closed_Positions.py
+│   ├── 2_Pozycja.py        # Analiza pojedynczego tickera
+│   └── 3_Closed_Positions.py
 ├── core/
 │   ├── importer.py         # Parse XTB Excel/CSV
 │   ├── importer_maps.py    # Ticker → Yahoo
 │   ├── analyzer.py         # PnL, ROI, summaries
+│   ├── history.py          # yfinance .history() 1Y/3Y/5Y
+│   ├── fundamentals.py     # yfinance .info
+│   ├── benchmark.py        # vs S&P 500 / WIG20
+│   ├── timing_score.py     # percentyl ceny zakupu (3M)
 │   ├── currencies.py       # FX detection & conversion
-│   ├── market_data.py      # Cached yfinance (@st.cache_data)
+│   ├── market_data.py      # Cached last prices
 │   └── session.py          # st.session_state cache
 ├── ui/
 │   ├── sidebar.py          # Upload + currency settings
-│   ├── charts.py           # Plotly charts
+│   ├── charts.py           # Portfolio Plotly charts
+│   ├── position_charts.py  # Price/volume, benchmark, timing gauge
 │   ├── formatters.py       # Currency / metric styling
 │   └── tables.py           # DataFrames with Polish headers
 └── requirements.txt

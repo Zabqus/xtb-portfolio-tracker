@@ -5,7 +5,12 @@ Podstrona: otwarte pozycje i analiza bieżącego portfela.
 import streamlit as st
 
 from core.analyzer import portfolio_summary
-from core.session import get_analyzed_open, get_display_currency, get_report
+from core.session import (
+    get_analyzed_open,
+    get_display_currency,
+    get_report,
+    set_selected_ticker,
+)
 from ui.charts import build_allocation_pie, build_pnl_bar_chart
 from ui.formatters import format_currency, pnl_delta_color
 from ui.sidebar import render_import_sidebar
@@ -73,3 +78,15 @@ with c2:
 
 st.subheader("Otwarte pozycje")
 render_open_positions_table(analyzed, currency)
+
+st.divider()
+st.subheader("Analiza pojedynczej pozycji")
+tickers = analyzed["ticker_xtb"].tolist()
+pick = st.selectbox(
+    "Wybierz ticker do szczegółowej analizy",
+    tickers,
+    key="portfolio_pick_ticker",
+)
+if st.button("Otwórz analizę pozycji →", type="primary"):
+    set_selected_ticker(pick)
+    st.switch_page("pages/2_Pozycja.py")

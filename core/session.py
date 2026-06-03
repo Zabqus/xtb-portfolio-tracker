@@ -19,6 +19,7 @@ SESSION_DEFAULTS = {
     "analyzed_open": None,
     "analysis_signature": None,
     "parse_error": None,
+    "selected_ticker_xtb": None,
 }
 
 
@@ -112,3 +113,22 @@ def get_analyzed_open() -> pd.DataFrame | None:
     st.session_state.analyzed_open = analyzed
     st.session_state.analysis_signature = signature
     return analyzed
+
+
+def get_selected_ticker() -> str | None:
+    return st.session_state.get("selected_ticker_xtb")
+
+
+def set_selected_ticker(ticker_xtb: str) -> None:
+    st.session_state.selected_ticker_xtb = ticker_xtb
+
+
+def get_position_row(ticker_xtb: str) -> pd.Series | None:
+    """Zwraca wiersz otwartej pozycji dla podanego tickera XTB."""
+    analyzed = get_analyzed_open()
+    if analyzed is None:
+        return None
+    mask = analyzed["ticker_xtb"] == ticker_xtb
+    if not mask.any():
+        return None
+    return analyzed.loc[mask].iloc[0]

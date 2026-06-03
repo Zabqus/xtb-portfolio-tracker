@@ -30,6 +30,7 @@ if report is None:
         ### Podstrony
 
         - **Portfolio** – otwarte pozycje, wykresy, metryki PnL
+        - **Pozycja** – wykres 1Y/3Y/5Y, fundamenty, benchmark, timing wejścia
         - **Closed Positions** – historia zamkniętych transakcji z eksportu XTB
 
         ### Wskazówki
@@ -50,6 +51,6 @@ st.markdown(
     | Otwarte pozycje | **{len(report.open_positions)}** |
     | Zamknięte pozycje | **{len(report.closed_positions) if report.closed_positions is not None else 0}** |
 
-    Przejdź do podstrony **Portfolio** lub **Closed Positions** w menu po lewej.
+    Przejdź do **Portfolio**, **Pozycja** (analiza tickera) lub **Closed Positions** w menu po lewej.
     """
 )
