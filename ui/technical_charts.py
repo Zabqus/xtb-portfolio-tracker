@@ -20,6 +20,97 @@ from core.technicals import (
 )
 
 
+def build_price_ma_rsi_chart(
+    df: pd.DataFrame,
+    ticker: str,
+    entry_price: float | None = None,
+) -> go.Figure:
+    """
+    Wykres łączony: cena + MA (overlay, górny panel) + RSI(14) (dolny subplot).
+    """
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.06,
+        row_heights=[0.72, 0.28],
+        subplot_titles=(f"{ticker} — cena i średnie kroczące", "RSI(14)"),
+    )
+
+    # --- Panel 1: Close + MA ---
+    fig.add_trace(
+        go.Scatter(
+            x=df["Date"],
+            y=df["Close"],
+            name="Close",
+            line=dict(color="#4a9eff", width=2),
+        ),
+        row=1,
+        col=1,
+    )
+
+    ma_styles = [
+        (COL_MA20, "#f39c12", "MA20"),
+        (COL_MA50, "#9b59b6", "MA50"),
+        (COL_MA200, "#e74c3c", "MA200"),
+    ]
+    for col, color, label in ma_styles:
+        if col in df.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=df["Date"],
+                    y=df[col],
+                    name=label,
+                    line=dict(color=color, width=1.5, dash="dot"),
+                ),
+                row=1,
+                col=1,
+            )
+
+    if entry_price is not None and entry_price > 0:
+        fig.add_hline(
+            y=entry_price,
+            line_dash="dash",
+            line_color="#f39c12",
+            line_width=1.5,
+            annotation_text=f"Śr. zakup: {entry_price:,.4f}",
+            annotation_position="top left",
+            row=1,
+            col=1,
+        )
+
+    # --- Panel 2: RSI ---
+    if COL_RSI in df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df["Date"],
+                y=df[COL_RSI],
+                name="RSI(14)",
+                line=dict(color="#4a9eff", width=2),
+                fill="tozeroy",
+                fillcolor="rgba(74, 158, 255, 0.1)",
+            ),
+            row=2,
+            col=1,
+        )
+
+    fig.add_hline(y=70, line_dash="dash", line_color="#e74c3c", row=2, col=1)
+    fig.add_hline(y=30, line_dash="dash", line_color="#2ecc71", row=2, col=1)
+    fig.add_hrect(y0=30, y1=70, fillcolor="gray", opacity=0.06, line_width=0, row=2, col=1)
+
+    fig.update_layout(
+        height=620,
+        hovermode="x unified",
+        legend=dict(orientation="h", y=1.02, x=0),
+        margin=dict(t=80, b=40),
+        showlegend=True,
+    )
+    fig.update_yaxes(title_text="Cena", row=1, col=1)
+    fig.update_yaxes(title_text="RSI", range=[0, 100], row=2, col=1)
+    fig.update_xaxes(title_text="Data", row=2, col=1)
+    return fig
+
+
 def build_ma_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
     """Cena zamknięcia + MA20 / MA50 / MA200."""
     fig = go.Figure()

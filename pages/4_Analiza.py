@@ -10,9 +10,8 @@ from core.technicals import engine_name, fetch_technicals, latest_indicator_snap
 from ui.sidebar import render_import_sidebar
 from ui.technical_charts import (
     build_bollinger_chart,
-    build_ma_chart,
     build_macd_chart,
-    build_rsi_chart,
+    build_price_ma_rsi_chart,
 )
 
 st.title("📉 Analiza techniczna")
@@ -92,28 +91,17 @@ st.caption(f"Trend vs MA200: **{snap.get('trend_ma200', '—')}**")
 # Linia średniej ceny zakupu (opcjonalna informacja)
 st.caption(f"Twoja śr. cena zakupu (XTB): **{avg_price:,.4f}**")
 
-tab_ma, tab_rsi, tab_macd, tab_bb = st.tabs(
-    ["Średnie kroczące", "RSI", "MACD", "Bollinger Bands"]
+st.subheader("Wykres techniczny")
+st.plotly_chart(
+    build_price_ma_rsi_chart(tech_df, selected, entry_price=avg_price),
+    use_container_width=True,
+)
+st.caption(
+    "Górny panel: cena + MA20/50/200 · Dolny panel: RSI(14) (30/70). "
+    "Pomarańczowa linia — Twoja średnia cena zakupu."
 )
 
-with tab_ma:
-    st.plotly_chart(build_ma_chart(tech_df, selected), use_container_width=True)
-    st.markdown(
-        """
-        - **MA20** — krótkoterminowy trend  
-        - **MA50** — średnioterminowy trend  
-        - **MA200** — długoterminowy trend (wymaga wystarczającej historii; wybierz **5Y**)
-        """
-    )
-
-with tab_rsi:
-    st.plotly_chart(build_rsi_chart(tech_df, selected), use_container_width=True)
-    st.markdown(
-        """
-        **RSI(14)** powyżej 70 → wykupienie · poniżej 30 → wyprzedanie.  
-        To nie sygnał kupna/sprzedaży sam w sobie — używaj z kontekstem trendu.
-        """
-    )
+tab_macd, tab_bb = st.tabs(["MACD", "Bollinger Bands"])
 
 with tab_macd:
     st.plotly_chart(build_macd_chart(tech_df, selected), use_container_width=True)
