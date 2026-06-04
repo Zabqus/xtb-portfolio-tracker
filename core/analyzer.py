@@ -58,7 +58,37 @@ def analyze_portfolio(
     result.attrs["account_currency"] = account_currency
     result.attrs["display_currency"] = target
     result.attrs["fx_rates"] = rates
+    if "account_label" in result.columns:
+        result.attrs["account_labels"] = tuple(
+            sorted(result["account_label"].dropna().unique())
+        )
     return result
+
+
+def portfolio_summary_by_account(analyzed: pd.DataFrame) -> pd.DataFrame | None:
+    """Podsumowanie per konto (tylko gdy jest kolumna account_label)."""
+    if "account_label" not in analyzed.columns:
+        return None
+    valid = analyzed.dropna(subset=["market_value", "position_cost"])
+    if valid.empty:
+        return None
+
+    rows: list[dict] = []
+    for label, grp in valid.groupby("account_label", sort=True):
+        cost = float(grp["position_cost"].sum())
+        value = float(grp["market_value"].sum())
+        pnl = value - cost
+        rows.append(
+            {
+                "account_label": label,
+                "positions": len(grp),
+                "market_value": value,
+                "position_cost": cost,
+                "pnl": pnl,
+                "roi_pct": (pnl / cost * 100) if cost > 0 else 0.0,
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def portfolio_summary(analyzed: pd.DataFrame) -> dict[str, float | str]:
@@ -69,7 +99,7 @@ def portfolio_summary(analyzed: pd.DataFrame) -> dict[str, float | str]:
     total_pnl = total_value - total_cost
     total_roi = (total_pnl / total_cost * 100) if total_cost > 0 else 0.0
 
-    return {
+    out: dict[str, float | str] = {
         "total_value": float(total_value),
         "total_cost": float(total_cost),
         "total_pnl": float(total_pnl),
@@ -77,6 +107,10 @@ def portfolio_summary(analyzed: pd.DataFrame) -> dict[str, float | str]:
         "display_currency": analyzed.attrs.get("display_currency", "PLN"),
         "account_currency": analyzed.attrs.get("account_currency", "PLN"),
     }
+    if analyzed.attrs.get("account_labels"):
+        out["account_labels"] = analyzed.attrs["account_labels"]
+        out["is_merged"] = True
+    return out
 
 
 def closed_positions_summary(closed: pd.DataFrame) -> dict[str, float | int]:

@@ -4,7 +4,7 @@ Podstrona: otwarte pozycje i analiza bieżącego portfela.
 
 import streamlit as st
 
-from core.analyzer import portfolio_summary
+from core.analyzer import portfolio_summary, portfolio_summary_by_account
 from core.excel_export import ExcelExportError, default_excel_filename, generate_excel_bytes
 from core.pdf_report import PdfReportError, default_report_filename, generate_monthly_pdf_bytes
 from core.session import (
@@ -64,7 +64,28 @@ with col3:
         delta_color=pnl_delta_color(pnl),
     )
 with col4:
-    st.metric("Waluta konta", summary["account_currency"])
+    if summary.get("is_merged"):
+        st.metric("Konta", ", ".join(summary.get("account_labels", ())))
+    else:
+        st.metric("Waluta konta", summary["account_currency"])
+
+by_account = portfolio_summary_by_account(analyzed)
+if by_account is not None and not by_account.empty:
+    st.markdown("**Podział na konta** (w walucie wyświetlania)")
+    show_acc = by_account.copy()
+    show_acc["Wartość"] = show_acc["market_value"].map(lambda v: format_currency(v, currency))
+    show_acc["PnL"] = show_acc["pnl"].map(lambda v: format_currency(v, currency))
+    show_acc["ROI %"] = show_acc["roi_pct"].map(lambda v: f"{v:.2f}%")
+    st.dataframe(
+        show_acc[["account_label", "positions", "Wartość", "PnL", "ROI %"]].rename(
+            columns={
+                "account_label": "Konto",
+                "positions": "Pozycje",
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 missing = analyzed["market_price"].isna().sum()
 if missing > 0:

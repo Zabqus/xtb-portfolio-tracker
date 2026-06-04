@@ -28,6 +28,8 @@ def main() -> int:
         "core.allocation",
         "core.pdf_report",
         "core.excel_export",
+        "core.multi_account",
+        "core.alerts",
         "core.session",
         "ui.charts",
         "ui.formatters",

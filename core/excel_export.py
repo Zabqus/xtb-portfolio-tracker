@@ -158,7 +158,12 @@ def _build_portfolio_sheet(ws, report: XTBReport, analyzed: pd.DataFrame, summar
         ("Waluta konta", summary["account_currency"]),
         ("Waluta wyświetlania", currency),
     ]
-    if report.account_number:
+    if report.is_merged and report.account_labels:
+        meta.append(("Konta", ", ".join(report.account_labels)))
+        if report.source_filenames:
+            for label, fn in report.source_filenames.items():
+                meta.append((f"Plik {label}", fn))
+    elif report.account_number:
         meta.append(("Numer konta", report.account_number))
     row = _write_key_values(ws, row, meta)
 

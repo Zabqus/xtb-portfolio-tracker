@@ -10,6 +10,7 @@ from core.closed_analysis import closed_positions_summary, get_top_trades
 from core.cost_basis import get_current_cost_basis
 from core.session import (
     get_cost_basis_history,
+    get_display_currency,
     get_portfolio_timeline,
     get_report,
     get_trade_analytics,
@@ -37,7 +38,7 @@ report = get_report()
 if report is None:
     st.stop()
 
-currency = report.account_currency
+currency = get_display_currency()
 closed = report.closed_positions
 
 tab_timeline, tab_analytics, tab_closed, tab_trades = st.tabs(

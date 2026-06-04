@@ -12,6 +12,7 @@ import streamlit as st
 from core.analyzer import analyze_portfolio
 from core.importer import XTBReport, parse_xtb_report
 from core.cost_basis import build_cost_basis_history
+from core.multi_account import MULTI_ACCOUNT_CURRENCY, merge_reports, merge_timelines
 from core.timeline import build_portfolio_timeline
 from core.trade_analytics import TradeAnalyticsSummary, compute_trade_analytics
 from core.transactions import parse_cash_operations_trades
@@ -54,27 +55,17 @@ def _file_signature(uploaded_file) -> str:
     return f"{uploaded_file.name}:{len(data)}:{digest}"
 
 
-def process_upload(uploaded_file) -> bool:
-    """
-    Parsuje plik tylko gdy zmienił się upload (inaczej używa cache).
+def _combined_signature(file1, file2) -> str:
+    parts = []
+    if file1 is not None:
+        parts.append(_file_signature(file1))
+    if file2 is not None:
+        parts.append(_file_signature(file2))
+    return "|".join(parts) if parts else ""
 
-    Zwraca True, gdy raport jest dostępny; False przy błędzie lub braku pliku.
-    """
-    init_session_state()
 
-    if uploaded_file is None:
-        st.session_state.file_signature = None
-        st.session_state.report = None
-        st.session_state.analyzed_open = None
-        st.session_state.analysis_signature = None
-        st.session_state.parse_error = None
-        return False
-
-    signature = _file_signature(uploaded_file)
-    if signature == st.session_state.file_signature and st.session_state.report is not None:
-        return st.session_state.parse_error is None
-
-    st.session_state.file_signature = signature
+def _clear_report_cache() -> None:
+    st.session_state.report = None
     st.session_state.analyzed_open = None
     st.session_state.analysis_signature = None
     st.session_state.portfolio_timeline = None
@@ -84,16 +75,83 @@ def process_upload(uploaded_file) -> bool:
     st.session_state.round_trips = None
     st.session_state.analytics_signature = None
 
+
+def _default_display_currency(report: XTBReport) -> str:
+    if report.is_merged and report.account_labels:
+        for preferred in ("PLN", "EUR", "USD", "GBP"):
+            if preferred in report.account_labels:
+                return preferred
+        return report.account_labels[0]
+    return report.account_currency
+
+
+def process_upload(uploaded_file) -> bool:
+    """Parsuje jeden plik (kompatybilność wsteczna)."""
+    return process_uploads(uploaded_file, None)
+
+
+def process_uploads(
+    uploaded_primary,
+    uploaded_secondary=None,
+) -> bool:
+    """
+    Parsuje jeden lub dwa eksporty XTB. Dwa pliki → merge (multi-account).
+
+    Zwraca True, gdy raport jest dostępny.
+    """
+    init_session_state()
+
+    if uploaded_primary is None and uploaded_secondary is None:
+        st.session_state.file_signature = None
+        _clear_report_cache()
+        st.session_state.parse_error = None
+        return False
+
+    signature = _combined_signature(uploaded_primary, uploaded_secondary)
+    if signature == st.session_state.file_signature and st.session_state.report is not None:
+        return st.session_state.parse_error is None
+
+    st.session_state.file_signature = signature
+    _clear_report_cache()
+
+    reports: list[XTBReport] = []
+    errors: list[str] = []
+
+    for label, uploaded in (("konto 1", uploaded_primary), ("konto 2", uploaded_secondary)):
+        if uploaded is None:
+            continue
+        try:
+            uploaded.seek(0)
+            reports.append(parse_xtb_report(uploaded, uploaded.name))
+        except (ValueError, pd.errors.ParserError) as exc:
+            errors.append(f"{label} ({uploaded.name}): {exc}")
+
+    if uploaded_secondary is not None and len(reports) < 2:
+        if errors:
+            st.session_state.parse_error = "; ".join(errors)
+        else:
+            st.session_state.parse_error = "Wgraj oba pliki, aby połączyć konta PLN + EUR."
+        return False
+
+    if not reports:
+        st.session_state.parse_error = errors[0] if errors else "Błąd importu."
+        return False
+
+    if errors:
+        st.session_state.parse_error = "; ".join(errors)
+        return False
+
     try:
-        uploaded_file.seek(0)
-        report = parse_xtb_report(uploaded_file, uploaded_file.name)
+        if len(reports) == 1:
+            report = reports[0]
+        else:
+            report = merge_reports(reports)
         st.session_state.report = report
         st.session_state.parse_error = None
         if st.session_state.display_currency is None:
-            st.session_state.display_currency = report.account_currency
+            st.session_state.display_currency = _default_display_currency(report)
         return True
-    except (ValueError, pd.errors.ParserError) as exc:
-        st.session_state.report = None
+    except ValueError as exc:
         st.session_state.parse_error = str(exc)
         return False
 
@@ -104,7 +162,11 @@ def get_report() -> XTBReport | None:
 
 def get_display_currency() -> str:
     report = get_report()
-    default = report.account_currency if report else "PLN"
+    if report is None:
+        return st.session_state.get("display_currency") or "PLN"
+    if report.account_currency == MULTI_ACCOUNT_CURRENCY:
+        return st.session_state.get("display_currency") or _default_display_currency(report)
+    default = report.account_currency
     return st.session_state.get("display_currency") or default
 
 
@@ -157,6 +219,20 @@ def get_position_row(ticker_xtb: str) -> pd.Series | None:
     return analyzed.loc[mask].iloc[0]
 
 
+def _build_merged_timeline(report: XTBReport) -> pd.DataFrame:
+    if report.cash_operations is None or not report.account_labels:
+        return pd.DataFrame()
+    timelines: list[pd.DataFrame] = []
+    for label in report.account_labels:
+        subset = report.cash_operations[report.cash_operations["account_label"] == label]
+        if subset.empty:
+            continue
+        tl = build_portfolio_timeline(subset)
+        if not tl.empty:
+            timelines.append(tl)
+    return merge_timelines(timelines)
+
+
 def get_portfolio_timeline() -> pd.DataFrame | None:
     """Cache timeline portfela (wymaga natywnego Cash Operations w raporcie)."""
     report = get_report()
@@ -170,7 +246,11 @@ def get_portfolio_timeline() -> pd.DataFrame | None:
     ):
         return st.session_state.portfolio_timeline
 
-    timeline = build_portfolio_timeline(report.cash_operations)
+    if report.is_merged:
+        timeline = _build_merged_timeline(report)
+    else:
+        timeline = build_portfolio_timeline(report.cash_operations)
+
     st.session_state.portfolio_timeline = timeline
     st.session_state.timeline_signature = signature
     return timeline

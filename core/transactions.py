@@ -57,10 +57,15 @@ def parse_cash_operations_trades(cash_ops: pd.DataFrame) -> pd.DataFrame:
 
         side, quantity, price = parsed
         ticker_xtb = str(row["Ticker"]).strip().upper()
+        account_label = row.get("account_label") if "account_label" in row.index else None
+        if account_label is not None and pd.notna(account_label):
+            label = str(account_label)
+            suffix = f" [{label}]"
+            if not ticker_xtb.endswith(suffix):
+                ticker_xtb = f"{ticker_xtb}{suffix}"
         op_type = str(row["Type"])
 
-        rows.append(
-            {
+        row_data = {
                 "trade_time": row["trade_time"],
                 "trade_date": row["trade_time"].normalize(),
                 "ticker_xtb": ticker_xtb,
@@ -71,8 +76,10 @@ def parse_cash_operations_trades(cash_ops: pd.DataFrame) -> pd.DataFrame:
                 "amount": pd.to_numeric(row.get("Amount"), errors="coerce"),
                 "operation_type": op_type,
                 "comment": row["Comment"],
-            }
-        )
+        }
+        if account_label is not None and pd.notna(account_label):
+            row_data["account_label"] = str(account_label)
+        rows.append(row_data)
 
     if not rows:
         return pd.DataFrame()

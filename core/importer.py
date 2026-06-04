@@ -50,6 +50,9 @@ class XTBReport:
     account_currency: str
     account_number: str | None
     filename: str
+    account_labels: tuple[str, ...] | None = None
+    source_filenames: dict[str, str] | None = None
+    is_merged: bool = False
 
 
 def _is_xtb_native_excel(sheet_names: list[str]) -> bool:

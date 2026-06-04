@@ -157,7 +157,9 @@ def _add_summary_section(
         ("Waluta konta", str(summary["account_currency"])),
         ("Liczba otwartych pozycji", str(len(report.open_positions))),
     ]
-    if report.account_number:
+    if report.is_merged and report.account_labels:
+        rows.append(("Konta", ", ".join(report.account_labels)))
+    elif report.account_number:
         rows.append(("Numer konta", str(report.account_number)))
 
     for label, value in rows:

@@ -13,7 +13,8 @@ xtb_portfolio_tracker/
 │   ├── 3_Historia.py       # Timeline, zamknięte pozycje, transakcje
 │   ├── 4_Analiza.py        # Analiza techniczna (pandas_ta)
 │   ├── 5_Watchlist.py      # Tickery spoza portfela, porównanie zwrotów
-│   └── 6_Alokacja.py       # Sektor i region (USA/EU/PL)
+│   ├── 6_Alokacja.py       # Sektor i region (USA/EU/PL)
+│   └── 7_Alerty.py         # Progi ±X% ROI (alerty w aplikacji)
 ├── core/
 │   ├── importer.py         # Parse XTB Excel/CSV
 │   ├── importer_maps.py    # Ticker → Yahoo
@@ -35,6 +36,8 @@ xtb_portfolio_tracker/
 │   ├── allocation.py       # sektor / region z yfinance .info
 │   ├── pdf_report.py       # miesięczny raport PDF (fpdf2 + kaleido)
 │   ├── excel_export.py     # eksport .xlsx (Portfolio / Historia / Analiza)
+│   ├── multi_account.py    # merge PLN + EUR (multi-account)
+│   ├── alerts.py           # progi ROI ±X%
 │   └── session.py          # st.session_state cache
 ├── ui/
 │   ├── sidebar.py          # Upload + currency settings
@@ -70,6 +73,8 @@ Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → **Portfo
 - **Alokacja** – wykresy sektorowe i geograficzne (USA / EU / PL) z `sector` i `country` w Yahoo `.info`
 - **Raport PDF** – miesięczny eksport z Portfolio: podsumowanie, wykresy Plotly→PNG (`kaleido`), tabela pozycji (`fpdf2`)
 - **Eksport Excel** – sformatowany `.xlsx` z arkuszami Portfolio / Historia / Analiza (`openpyxl`)
+- **Multi-account** – dwa eksporty XTB (np. PLN + EUR), merge i jeden widok całego majątku
+- **Alerty** – zakładka z listą pozycji powyżej progu ±X% ROI; auto-odświeżanie (`st.rerun()`)
 
 ### Eksport (Portfolio)
 

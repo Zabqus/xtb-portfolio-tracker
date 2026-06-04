@@ -38,6 +38,7 @@ def render_open_positions_table(df: pd.DataFrame, currency: str) -> None:
     rename = {
         "ticker_xtb": "Ticker XTB",
         "ticker_yahoo": "Ticker Yahoo",
+        "account_label": "Konto",
         "currency": "Waluta",
         "quantity": "Ilość",
         "avg_price": "Śr. cena (waluta instr.)",
@@ -49,7 +50,7 @@ def render_open_positions_table(df: pd.DataFrame, currency: str) -> None:
     }
     display = display.rename(columns={k: v for k, v in rename.items() if k in display.columns})
 
-    skip = ("Ticker XTB", "Ticker Yahoo", "Waluta")
+    skip = ("Ticker XTB", "Ticker Yahoo", "Konto", "Waluta")
     for col in display.columns:
         if col not in skip:
             display[col] = display[col].map(lambda x: round(x, 2) if pd.notna(x) else None)
