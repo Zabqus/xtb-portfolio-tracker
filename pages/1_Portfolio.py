@@ -76,6 +76,9 @@ with c1:
 with c2:
     st.plotly_chart(build_pnl_bar_chart(analyzed, currency), use_container_width=True)
 
+if st.button("Sektor i region (USA / EU / PL) →", key="portfolio_to_allocation"):
+    st.switch_page("pages/6_Alokacja.py")
+
 st.subheader("Otwarte pozycje")
 render_open_positions_table(analyzed, currency)
 

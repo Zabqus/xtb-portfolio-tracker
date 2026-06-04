@@ -34,6 +34,7 @@ if report is None:
         - **Historia** – timeline, trade analytics, cost basis, zamknięte pozycje
         - **Analiza** – MA, RSI, MACD, Bollinger Bands (pandas_ta)
         - **Watchlist** – tickery spoza portfela, zwroty i porównanie z portfelem
+        - **Alokacja** – podział sektorowy i geograficzny (USA / EU / PL)
 
         ### Wskazówki
 
@@ -53,6 +54,6 @@ st.markdown(
     | Otwarte pozycje | **{len(report.open_positions)}** |
     | Zamknięte pozycje | **{len(report.closed_positions) if report.closed_positions is not None else 0}** |
 
-    Przejdź do **Portfolio**, **Pozycja**, **Historia**, **Analiza** lub **Watchlist** w menu po lewej.
+    Przejdź do **Portfolio**, **Pozycja**, **Historia**, **Analiza**, **Watchlist** lub **Alokacja** w menu po lewej.
     """
 )

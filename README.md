@@ -12,7 +12,8 @@ xtb_portfolio_tracker/
 │   ├── 2_Pozycja.py        # Analiza pojedynczego tickera
 │   ├── 3_Historia.py       # Timeline, zamknięte pozycje, transakcje
 │   ├── 4_Analiza.py        # Analiza techniczna (pandas_ta)
-│   └── 5_Watchlist.py      # Tickery spoza portfela, porównanie zwrotów
+│   ├── 5_Watchlist.py      # Tickery spoza portfela, porównanie zwrotów
+│   └── 6_Alokacja.py       # Sektor i region (USA/EU/PL)
 ├── core/
 │   ├── importer.py         # Parse XTB Excel/CSV
 │   ├── importer_maps.py    # Ticker → Yahoo
@@ -31,6 +32,7 @@ xtb_portfolio_tracker/
 │   ├── currencies.py       # FX detection & conversion
 │   ├── market_data.py      # Cached last prices
 │   ├── watchlist.py        # watchlist.json, zwroty, vs portfel
+│   ├── allocation.py       # sektor / region z yfinance .info
 │   └── session.py          # st.session_state cache
 ├── ui/
 │   ├── sidebar.py          # Upload + currency settings
@@ -38,7 +40,8 @@ xtb_portfolio_tracker/
 │   ├── position_charts.py  # Price/volume, benchmark, timing gauge
 │   ├── formatters.py       # Currency / metric styling
 │   ├── tables.py           # DataFrames with Polish headers
-│   └── watchlist_charts.py # Wykresy watchlisty
+│   ├── watchlist_charts.py # Wykresy watchlisty
+│   └── allocation_charts.py # Wykresy alokacji
 └── requirements.txt
 ```
 
@@ -62,6 +65,7 @@ Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → **Portfo
 - **Konsensus analityków** – `targetMeanPrice`, `recommendationKey`, `numberOfAnalystOpinions` (zakładka *Fundamenty* na stronie Pozycja)
 - **Analiza techniczna** – `pandas-ta` (Python 3.12+) lub opcjonalnie **TA-Lib**, w przeciwnym razie fallback w pandas
 - **Watchlist** – symbole spoza otwartego portfela, zwroty 1M/3M/1Y i porównanie ze średnią ważoną portfela (`watchlist.json` lokalnie)
+- **Alokacja** – wykresy sektorowe i geograficzne (USA / EU / PL) z `sector` i `country` w Yahoo `.info`
 
 ### Biblioteki techniczne (opcjonalne)
 
