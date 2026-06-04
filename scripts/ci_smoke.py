@@ -24,6 +24,7 @@ def main() -> int:
         "core.trade_analytics",
         "core.cost_basis",
         "core.technicals",
+        "core.watchlist",
         "core.session",
         "ui.charts",
         "ui.formatters",
@@ -34,6 +35,7 @@ def main() -> int:
         "ui.analytics_charts",
         "ui.technical_charts",
         "ui.analyst_consensus",
+        "ui.watchlist_charts",
     ]
 
     for name in modules:

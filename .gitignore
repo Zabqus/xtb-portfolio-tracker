@@ -14,9 +14,11 @@ env/
 # Streamlit (opcjonalnie, jeśli pojawi się lokalna konfiguracja)
 .streamlit/secrets.toml
 
+# Lokalna watchlista użytkownika
+watchlist.json
+
 # Lokalne eksporty XTB (numer konta, historia transakcji)
 import_xtb.xlsx
-pln_import.xlsx
 *_xtb*.xlsx
 *_import.xlsx
 

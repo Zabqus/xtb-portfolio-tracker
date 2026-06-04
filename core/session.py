@@ -15,6 +15,12 @@ from core.cost_basis import build_cost_basis_history
 from core.timeline import build_portfolio_timeline
 from core.trade_analytics import TradeAnalyticsSummary, compute_trade_analytics
 from core.transactions import parse_cash_operations_trades
+from core.watchlist import (
+    WatchlistEntry,
+    is_in_portfolio,
+    load_watchlist_file,
+    save_watchlist_file,
+)
 
 SESSION_DEFAULTS = {
     "file_signature": None,
@@ -30,6 +36,7 @@ SESSION_DEFAULTS = {
     "trade_analytics_summary": None,
     "round_trips": None,
     "analytics_signature": None,
+    "watchlist": None,
 }
 
 
@@ -200,3 +207,51 @@ def get_cost_basis_history() -> pd.DataFrame | None:
     """Cache historii średniej ceny zakupu."""
     _load_analytics_bundle()
     return st.session_state.cost_basis_history
+
+
+def _sync_watchlist_from_disk() -> list[WatchlistEntry]:
+    if st.session_state.watchlist is None:
+        st.session_state.watchlist = load_watchlist_file()
+    return st.session_state.watchlist
+
+
+def get_watchlist() -> list[WatchlistEntry]:
+    """Lista symboli watchlisty (cache + plik watchlist.json)."""
+    init_session_state()
+    return list(_sync_watchlist_from_disk())
+
+
+def add_watchlist_symbol(raw: str) -> tuple[bool, str]:
+    """
+    Dodaje symbol do watchlisty.
+
+    Zwraca (sukces, komunikat).
+    """
+    init_session_state()
+    try:
+        entry = WatchlistEntry.from_symbol(raw)
+    except ValueError as exc:
+        return False, str(exc)
+
+    report = get_report()
+    open_df = report.open_positions if report else None
+
+    if is_in_portfolio(entry, open_df):
+        return False, f"{entry.symbol} jest już w otwartym portfelu — watchlista służy do symboli spoza portfela."
+
+    entries = _sync_watchlist_from_disk()
+    if any(e.yahoo.upper() == entry.yahoo.upper() for e in entries):
+        return False, f"{entry.yahoo} jest już na watchliście."
+
+    entries.append(entry)
+    st.session_state.watchlist = entries
+    save_watchlist_file(entries)
+    return True, f"Dodano **{entry.symbol}** → Yahoo: `{entry.yahoo}`"
+
+
+def remove_watchlist_symbol(symbol: str) -> None:
+    """Usuwa wpis po symbolu wejściowym lub Yahoo."""
+    key = str(symbol).strip().upper()
+    entries = [e for e in _sync_watchlist_from_disk() if e.symbol.upper() != key and e.yahoo.upper() != key]
+    st.session_state.watchlist = entries
+    save_watchlist_file(entries)
