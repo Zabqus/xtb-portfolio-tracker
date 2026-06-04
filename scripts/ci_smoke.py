@@ -26,6 +26,8 @@ def main() -> int:
         "core.technicals",
         "core.watchlist",
         "core.allocation",
+        "core.pdf_report",
+        "core.excel_export",
         "core.session",
         "ui.charts",
         "ui.formatters",

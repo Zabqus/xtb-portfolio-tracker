@@ -5,6 +5,8 @@ Podstrona: otwarte pozycje i analiza bieżącego portfela.
 import streamlit as st
 
 from core.analyzer import portfolio_summary
+from core.excel_export import ExcelExportError, default_excel_filename, generate_excel_bytes
+from core.pdf_report import PdfReportError, default_report_filename, generate_monthly_pdf_bytes
 from core.session import (
     get_analyzed_open,
     get_display_currency,
@@ -78,6 +80,60 @@ with c2:
 
 if st.button("Sektor i region (USA / EU / PL) →", key="portfolio_to_allocation"):
     st.switch_page("pages/6_Alokacja.py")
+
+st.subheader("Eksport")
+st.caption(
+    "PDF: podsumowanie i wykresy (kaleido). Excel: arkusze Portfolio, Historia, Analiza (openpyxl)."
+)
+
+
+@st.cache_data(show_spinner="Generowanie raportu PDF…")
+def _cached_monthly_pdf(analysis_signature: str) -> bytes:
+    report = get_report()
+    analyzed = get_analyzed_open()
+    if report is None or analyzed is None:
+        raise PdfReportError("Brak danych portfela.")
+    return generate_monthly_pdf_bytes(report, analyzed)
+
+
+export_sig = st.session_state.get("analysis_signature")
+if export_sig:
+
+    @st.cache_data(show_spinner="Generowanie pliku Excel…")
+    def _cached_excel_export(analysis_signature: str) -> bytes:
+        report = get_report()
+        analyzed = get_analyzed_open()
+        if report is None or analyzed is None:
+            raise ExcelExportError("Brak danych portfela.")
+        return generate_excel_bytes(report, analyzed)
+
+    col_pdf, col_xlsx = st.columns(2)
+    with col_pdf:
+        try:
+            pdf_bytes = _cached_monthly_pdf(export_sig)
+            st.download_button(
+                "Raport miesięczny (PDF)",
+                data=pdf_bytes,
+                file_name=default_report_filename(),
+                mime="application/pdf",
+                use_container_width=True,
+                key="portfolio_pdf_download",
+            )
+        except PdfReportError as exc:
+            st.error(str(exc))
+    with col_xlsx:
+        try:
+            xlsx_bytes = _cached_excel_export(export_sig)
+            st.download_button(
+                "Eksport Excel (.xlsx)",
+                data=xlsx_bytes,
+                file_name=default_excel_filename(),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="portfolio_xlsx_download",
+            )
+        except ExcelExportError as exc:
+            st.error(str(exc))
 
 st.subheader("Otwarte pozycje")
 render_open_positions_table(analyzed, currency)

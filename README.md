@@ -33,6 +33,8 @@ xtb_portfolio_tracker/
 │   ├── market_data.py      # Cached last prices
 │   ├── watchlist.py        # watchlist.json, zwroty, vs portfel
 │   ├── allocation.py       # sektor / region z yfinance .info
+│   ├── pdf_report.py       # miesięczny raport PDF (fpdf2 + kaleido)
+│   ├── excel_export.py     # eksport .xlsx (Portfolio / Historia / Analiza)
 │   └── session.py          # st.session_state cache
 ├── ui/
 │   ├── sidebar.py          # Upload + currency settings
@@ -66,6 +68,17 @@ Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → **Portfo
 - **Analiza techniczna** – `pandas-ta` (Python 3.12+) lub opcjonalnie **TA-Lib**, w przeciwnym razie fallback w pandas
 - **Watchlist** – symbole spoza otwartego portfela, zwroty 1M/3M/1Y i porównanie ze średnią ważoną portfela (`watchlist.json` lokalnie)
 - **Alokacja** – wykresy sektorowe i geograficzne (USA / EU / PL) z `sector` i `country` w Yahoo `.info`
+- **Raport PDF** – miesięczny eksport z Portfolio: podsumowanie, wykresy Plotly→PNG (`kaleido`), tabela pozycji (`fpdf2`)
+- **Eksport Excel** – sformatowany `.xlsx` z arkuszami Portfolio / Historia / Analiza (`openpyxl`)
+
+### Eksport (Portfolio)
+
+| Format | Zawartość |
+|--------|-----------|
+| **PDF** | Podsumowanie, wykresy PNG (kaleido), tabela pozycji |
+| **Excel** | Arkusz *Portfolio* (pozycje + KPI), *Historia* (timeline, transakcje, round-tripy, zamknięte), *Analiza* (trade stats, cost basis, alokacja) |
+
+PDF: czcionka z `assets/fonts/` lub systemowa (Arial). Wymaga `fpdf2` i `kaleido` (w `requirements.txt`).
 
 ### Biblioteki techniczne (opcjonalne)
 

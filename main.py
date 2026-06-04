@@ -35,6 +35,7 @@ if report is None:
         - **Analiza** – MA, RSI, MACD, Bollinger Bands (pandas_ta)
         - **Watchlist** – tickery spoza portfela, zwroty i porównanie z portfelem
         - **Alokacja** – podział sektorowy i geograficzny (USA / EU / PL)
+        - **Eksport** – PDF i Excel (.xlsx) ze strony Portfolio
 
         ### Wskazówki
 

@@ -17,6 +17,9 @@ env/
 # Lokalna watchlista użytkownika
 watchlist.json
 
+# Czcionka pobierana przy pierwszym raporcie PDF
+assets/fonts/DejaVuSans.ttf
+
 # Lokalne eksporty XTB (numer konta, historia transakcji)
 import_xtb.xlsx
 *_xtb*.xlsx

@@ -4,6 +4,8 @@ numpy>=1.26.0
 pandas>=2.1.0
 pandas-ta>=0.3.14b; python_version >= "3.12"
 plotly>=5.18.0
+kaleido>=0.2.1
+fpdf2>=2.7.0
 yfinance>=0.2.36
 openpyxl>=3.1.0
 # Opcjonalnie (wymaga zainstalowanej biblioteki C TA-Lib przed pip):
