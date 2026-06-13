@@ -2,6 +2,7 @@
 Podstrona: analiza techniczna (MA, RSI, MACD, Bollinger Bands).
 """
 
+import pandas as pd
 import streamlit as st
 
 from core.history import PERIOD_OPTIONS
@@ -23,6 +24,96 @@ if not render_import_sidebar():
 analyzed = get_analyzed_open()
 if analyzed is None:
     st.stop()
+
+with st.expander("📊 Szybki przegląd — wszystkie pozycje", expanded=False):
+    st.caption("MA200 trend, RSI i sygnał MACD dla każdego instrumentu w portfelu.")
+
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def _all_technicals_snapshot(tickers_yahoo: tuple[str, ...]) -> list[dict]:
+        results = []
+        for yahoo_sym in tickers_yahoo:
+            try:
+                df = fetch_technicals(yahoo_sym, "1Y")
+                if df.empty:
+                    raise ValueError("empty")
+                snap = latest_indicator_snapshot(df)
+                macd_val = snap.get("macd")
+                macd_sig = snap.get("macd_signal")
+                results.append(
+                    {
+                        "ticker_yahoo": yahoo_sym,
+                        "close": snap.get("close"),
+                        "ma200": snap.get("ma200"),
+                        "trend_ma200": snap.get("trend_ma200", "—"),
+                        "rsi": snap.get("rsi"),
+                        "rsi_zone": snap.get("rsi_zone", "—"),
+                        "macd_signal": (
+                            "↑ Bullish"
+                            if macd_val is not None and macd_sig is not None and macd_val > macd_sig
+                            else "↓ Bearish"
+                        ),
+                    }
+                )
+            except Exception:
+                results.append(
+                    {
+                        "ticker_yahoo": yahoo_sym,
+                        "close": None,
+                        "ma200": None,
+                        "trend_ma200": "błąd",
+                        "rsi": None,
+                        "rsi_zone": "—",
+                        "macd_signal": "—",
+                    }
+                )
+        return results
+
+    tickers_yahoo = tuple(
+        analyzed.dropna(subset=["ticker_yahoo"])["ticker_yahoo"].astype(str).tolist()
+    )
+
+    with st.spinner("Pobieranie wskaźników dla wszystkich pozycji…"):
+        snapshot_rows = _all_technicals_snapshot(tickers_yahoo)
+
+    snap_df = pd.DataFrame(snapshot_rows)
+    # Dodaj ticker_xtb z analyzed
+    ticker_map = dict(zip(analyzed["ticker_yahoo"], analyzed["ticker_xtb"]))
+    snap_df["Ticker"] = snap_df["ticker_yahoo"].map(ticker_map)
+
+    # Kolorowanie przez st.dataframe styler
+    def color_trend(val) -> str:
+        if not isinstance(val, str):
+            return ""
+        low = val.lower()
+        if "powyżej" in low or "bullish" in low or "↑" in val:
+            return "color: green"
+        if "poniżej" in low or "bearish" in low or "↓" in val:
+            return "color: red"
+        return ""
+
+    display_snap = snap_df[
+        ["Ticker", "close", "ma200", "trend_ma200", "rsi", "rsi_zone", "macd_signal"]
+    ].rename(
+        columns={
+            "close": "Cena",
+            "ma200": "MA200",
+            "trend_ma200": "Trend vs MA200",
+            "rsi": "RSI(14)",
+            "rsi_zone": "Strefa RSI",
+            "macd_signal": "MACD",
+        }
+    )
+    styler = display_snap.style
+    style_map = getattr(styler, "map", None) or styler.applymap
+    st.dataframe(
+        style_map(color_trend, subset=["Trend vs MA200", "MACD"]),
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.caption(
+        "Dane wyliczone z ostatnich 252 sesji. "
+        "Wybierz ticker w selectboxie poniżej, aby zobaczyć pełny wykres."
+    )
 
 tickers = analyzed["ticker_xtb"].tolist()
 preselect = get_selected_ticker()

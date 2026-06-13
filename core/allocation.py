@@ -180,6 +180,29 @@ def enrich_portfolio_allocation(analyzed: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def get_currency_exposure(analyzed: pd.DataFrame) -> pd.DataFrame:
+    """
+    Wylicza % portfela per waluta notowań instrumentu.
+    Kolumna 'currency' pochodzi z importer_maps: .DE → EUR, .WA/.PL → PLN, brak sufiksu/US → USD.
+    """
+    if "market_value" not in analyzed.columns or "currency" not in analyzed.columns:
+        return pd.DataFrame()
+
+    valid = analyzed.dropna(subset=["market_value", "currency"]).copy()
+    total = valid["market_value"].sum()
+    if total == 0:
+        return pd.DataFrame()
+
+    result = (
+        valid.groupby("currency")["market_value"]
+        .sum()
+        .reset_index()
+        .rename(columns={"market_value": "value"})
+    )
+    result["weight_pct"] = (result["value"] / total * 100).round(2)
+    return result.sort_values("weight_pct", ascending=False)
+
+
 def aggregate_breakdown(
     enriched: pd.DataFrame,
     group_col: str,

@@ -3,12 +3,14 @@ Podstrona: alokacja portfela — sektor i podział geograficzny (USA / EU / PL).
 """
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 from core.allocation import (
     REGION_ORDER,
     aggregate_breakdown,
     enrich_portfolio_allocation,
+    get_currency_exposure,
 )
 from core.analyzer import portfolio_summary
 from core.session import get_analyzed_open, get_report
@@ -129,6 +131,51 @@ if not unknown_region.empty:
             ),
             use_container_width=True,
             hide_index=True,
+        )
+
+st.divider()
+st.subheader("Ekspozycja walutowa")
+st.caption(
+    "Ile % portfela jest denominowane w każdej walucie. "
+    "Ważne przy ocenie ryzyka kursowego (np. umocnienie PLN redukuje wartość aktywów USD/EUR)."
+)
+
+currency_exp = get_currency_exposure(analyzed)
+
+if currency_exp.empty:
+    st.info("Brak danych o walutach pozycji.")
+else:
+    ce_col1, ce_col2 = st.columns(2)
+    with ce_col1:
+        fig_ce = px.pie(
+            currency_exp,
+            names="currency",
+            values="weight_pct",
+            title="Ekspozycja walutowa (%)",
+            hole=0.35,
+            color="currency",
+            color_discrete_map={"USD": "#2196F3", "EUR": "#4CAF50", "PLN": "#FF9800"},
+        )
+        fig_ce.update_traces(textinfo="percent+label")
+        st.plotly_chart(fig_ce, use_container_width=True)
+    with ce_col2:
+        st.dataframe(
+            currency_exp.rename(
+                columns={
+                    "currency": "Waluta",
+                    "value": f"Wartość ({currency})",
+                    "weight_pct": "Udział %",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+    dominant_ccy = currency_exp.iloc[0]["currency"]
+    dominant_pct = currency_exp.iloc[0]["weight_pct"]
+    if dominant_pct > 70:
+        st.info(
+            f"Ponad {dominant_pct:.0f}% portfela jest w **{dominant_ccy}**. "
+            "Rozważ dywersyfikację walutową lub hedging, jeśli zależy Ci na stabilności w PLN."
         )
 
 st.divider()

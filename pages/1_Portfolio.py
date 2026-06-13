@@ -7,13 +7,14 @@ import streamlit as st
 from core.analyzer import portfolio_summary, portfolio_summary_by_account
 from core.excel_export import ExcelExportError, default_excel_filename, generate_excel_bytes
 from core.pdf_report import PdfReportError, default_report_filename, generate_monthly_pdf_bytes
+from core.market_data import get_fetch_age_seconds
 from core.session import (
     get_analyzed_open,
     get_display_currency,
     get_report,
     set_selected_ticker,
 )
-from ui.charts import build_allocation_pie, build_pnl_bar_chart
+from ui.charts import build_allocation_pie, build_pnl_bar_chart, build_portfolio_treemap
 from ui.formatters import format_currency, pnl_delta_color
 from ui.sidebar import render_import_sidebar
 from ui.tables import render_open_positions_table
@@ -34,6 +35,18 @@ with st.spinner("Pobieranie cen i kursów walut…"):
 if analyzed is None:
     st.error("Nie udało się przeanalizować portfela.")
     st.stop()
+
+age = get_fetch_age_seconds()
+if age is not None:
+    mins = int(age // 60)
+    if mins < 2:
+        st.caption("🟢 Ceny aktualne (pobrane przed chwilą)")
+    elif mins < 60:
+        st.caption(f"🟡 Ceny z {mins} min temu — odśwież stronę, aby pobrać nowe")
+    else:
+        st.caption("🔴 Ceny sprzed ponad godziny — odśwież stronę")
+else:
+    st.caption("⚪ Ceny będą pobrane przy pierwszym załadowaniu")
 
 summary = portfolio_summary(analyzed)
 currency = str(summary["display_currency"])
@@ -93,11 +106,25 @@ if missing > 0:
     st.warning(f"Brak ceny Yahoo dla: {', '.join(tickers)}. Sprawdź core/importer_maps.py.")
 
 st.subheader("Wizualizacje")
-c1, c2 = st.columns(2)
-with c1:
-    st.plotly_chart(build_allocation_pie(analyzed, currency), use_container_width=True)
-with c2:
-    st.plotly_chart(build_pnl_bar_chart(analyzed, currency), use_container_width=True)
+chart_view = st.radio(
+    "Widok portfela",
+    ["Pie + Bar", "Mapa (Treemap)"],
+    horizontal=True,
+    key="portfolio_chart_view",
+)
+
+if chart_view == "Mapa (Treemap)":
+    st.plotly_chart(build_portfolio_treemap(analyzed, currency), use_container_width=True)
+    st.caption(
+        "Rozmiar kafla = wartość rynkowa pozycji. "
+        "Kolor: zielony = zysk, czerwony = strata (skala ROI%)."
+    )
+else:
+    c1, c2 = st.columns(2)
+    with c1:
+        st.plotly_chart(build_allocation_pie(analyzed, currency), use_container_width=True)
+    with c2:
+        st.plotly_chart(build_pnl_bar_chart(analyzed, currency), use_container_width=True)
 
 if st.button("Sektor i region (USA / EU / PL) →", key="portfolio_to_allocation"):
     st.switch_page("pages/6_Alokacja.py")
@@ -157,7 +184,52 @@ if export_sig:
             st.error(str(exc))
 
 st.subheader("Otwarte pozycje")
-render_open_positions_table(analyzed, currency)
+
+# Filtry
+f1, f2, f3 = st.columns(3)
+with f1:
+    show_filter = st.radio(
+        "Pokaż",
+        ["Wszystkie", "Tylko zyski", "Tylko straty"],
+        horizontal=True,
+        key="positions_filter_pnl",
+    )
+with f2:
+    if "account_label" in analyzed.columns and analyzed["account_label"].nunique() > 1:
+        accounts = ["Wszystkie"] + sorted(analyzed["account_label"].dropna().unique().tolist())
+        acc_filter = st.selectbox("Konto", accounts, key="positions_filter_account")
+    else:
+        acc_filter = "Wszystkie"
+with f3:
+    sort_by = st.selectbox(
+        "Sortuj po",
+        ["ROI % (malejąco)", "ROI % (rosnąco)", "Wartość (malejąco)", "PnL (malejąco)"],
+        key="positions_sort",
+    )
+
+# Zastosuj filtry
+filtered = analyzed.copy()
+if show_filter == "Tylko zyski":
+    filtered = filtered[filtered["roi_pct"] > 0]
+elif show_filter == "Tylko straty":
+    filtered = filtered[filtered["roi_pct"] < 0]
+if acc_filter != "Wszystkie":
+    filtered = filtered[filtered["account_label"] == acc_filter]
+
+sort_map = {
+    "ROI % (malejąco)": ("roi_pct", False),
+    "ROI % (rosnąco)": ("roi_pct", True),
+    "Wartość (malejąco)": ("market_value", False),
+    "PnL (malejąco)": ("pnl", False),
+}
+sort_col, asc = sort_map[sort_by]
+if sort_col in filtered.columns:
+    filtered = filtered.sort_values(sort_col, ascending=asc)
+
+if filtered.empty:
+    st.info("Brak pozycji spełniających wybrane filtry.")
+else:
+    render_open_positions_table(filtered, currency)
 
 st.divider()
 st.subheader("Analiza pojedynczej pozycji")

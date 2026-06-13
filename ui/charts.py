@@ -24,6 +24,43 @@ def build_allocation_pie(df: pd.DataFrame, currency: str) -> go.Figure:
     return fig
 
 
+def build_portfolio_treemap(df: pd.DataFrame, currency: str) -> go.Figure:
+    """
+    Treemap: rozmiar kafla = wartość rynkowa, kolor = ROI%.
+    Używa px.treemap z color_continuous_scale diverging (czerwony–żółty–zielony).
+    """
+    chart_df = df.dropna(subset=["market_value", "roi_pct"]).copy()
+    label_col = "ticker_xtb" if "ticker_xtb" in chart_df.columns else "ticker_yahoo"
+
+    fig = px.treemap(
+        chart_df,
+        path=[label_col],
+        values="market_value",
+        color="roi_pct",
+        color_continuous_scale="RdYlGn",  # czerwony → żółty → zielony
+        color_continuous_midpoint=0,
+        custom_data=["pnl", "market_price", "avg_price", "roi_pct"],
+    )
+    fig.update_traces(
+        texttemplate="<b>%{label}</b><br>%{customdata[3]:.1f}%",
+        hovertemplate=(
+            "<b>%{label}</b><br>"
+            f"Wartość: %{{value:,.2f}} {currency}<br>"
+            "ROI: %{customdata[3]:.2f}%<br>"
+            "PnL: %{customdata[0]:,.2f}<br>"
+            "Cena rynk.: %{customdata[1]:,.2f}<br>"
+            "Śr. cena: %{customdata[2]:,.2f}<extra></extra>"
+        ),
+    )
+    fig.update_layout(
+        title=f"Mapa portfela — rozmiar = wartość, kolor = ROI% ({currency})",
+        height=420,
+        margin=dict(t=40, l=0, r=0, b=0),
+        coloraxis_colorbar=dict(title="ROI %"),
+    )
+    return fig
+
+
 def build_pnl_bar_chart(df: pd.DataFrame, currency: str) -> go.Figure:
     """Wykres słupkowy – zysk/strata na poszczególnych aktywach."""
     chart_df = df.dropna(subset=["pnl"]).copy()

@@ -8,11 +8,15 @@ import pandas as pd
 import streamlit as st
 
 from core.alerts import (
+    PriceAlert,
     alert_row_keys,
     build_roi_snapshot,
+    check_price_alerts,
     compute_roi_alerts,
     compute_roi_deltas,
+    load_price_alerts,
     mark_new_alerts,
+    save_price_alerts,
 )
 from core.session import get_analyzed_open, get_display_currency, get_report, init_session_state
 from ui.formatters import format_currency
@@ -221,6 +225,96 @@ st.dataframe(
 st.caption(
     "ROI % = (wartość rynkowa − koszt pozycji) / koszt. Ceny z Yahoo; odśwież stronę lub włącz auto-odświeżanie."
 )
+
+st.divider()
+st.subheader("Alerty cenowe")
+st.caption("Powiadomi gdy cena instrumentu przekroczy zadany poziom (powyżej lub poniżej).")
+
+price_alerts = load_price_alerts()
+
+# Formularz dodawania
+with st.expander("➕ Dodaj alert cenowy"):
+    pa1, pa2, pa3, pa4 = st.columns([2, 2, 2, 2])
+    with pa1:
+        pa_ticker = st.selectbox(
+            "Ticker",
+            analyzed["ticker_xtb"].tolist(),
+            key="pa_ticker_select",
+        )
+    with pa2:
+        pa_direction = st.radio(
+            "Kierunek",
+            ["Powyżej ceny", "Poniżej ceny"],
+            horizontal=True,
+            key="pa_direction",
+        )
+    with pa3:
+        if pa_ticker in analyzed["ticker_xtb"].values:
+            raw_price = analyzed.loc[analyzed["ticker_xtb"] == pa_ticker, "market_price"].iloc[0]
+            current_price = float(raw_price) if pd.notna(raw_price) else 0.0
+        else:
+            current_price = 0.0
+        pa_target = st.number_input(
+            "Cena docelowa",
+            value=round(current_price * 1.1, 2),
+            step=0.01,
+            key="pa_target_price",
+        )
+    with pa4:
+        pa_note = st.text_input("Notatka (opcjonalnie)", key="pa_note")
+
+    if st.button("Dodaj alert", type="primary"):
+        yahoo = analyzed.loc[analyzed["ticker_xtb"] == pa_ticker, "ticker_yahoo"].iloc[0]
+        new_alert = PriceAlert(
+            ticker_xtb=pa_ticker,
+            ticker_yahoo=str(yahoo),
+            direction="above" if "Powyżej" in pa_direction else "below",
+            target_price=pa_target,
+            note=pa_note,
+        )
+        price_alerts.append(new_alert)
+        save_price_alerts(price_alerts)
+        st.success(
+            f"Alert dodany: {pa_ticker} {'>' if new_alert.direction == 'above' else '<'} {pa_target}"
+        )
+        st.rerun()
+
+# Sprawdź wyzwolone
+if price_alerts:
+    triggered_df = check_price_alerts(price_alerts, analyzed)
+    hit = triggered_df[triggered_df["wyzwolony"]] if not triggered_df.empty else pd.DataFrame()
+
+    if not hit.empty:
+        st.warning(f"🔔 {len(hit)} alert(y) cenowe wyzwolone!")
+        st.dataframe(hit.drop(columns=["wyzwolony"]), use_container_width=True, hide_index=True)
+
+    st.markdown(f"**Skonfigurowane alerty ({len(price_alerts)})**")
+    if not triggered_df.empty:
+        st.dataframe(
+            triggered_df.rename(columns={"wyzwolony": "Wyzwolony"}),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.caption("Brak aktualnych cen do sprawdzenia alertów.")
+
+    # Usuwanie
+    to_del = st.selectbox(
+        "Usuń alert",
+        range(len(price_alerts)),
+        format_func=lambda i: (
+            f"{price_alerts[i].ticker_xtb} "
+            f"{'>' if price_alerts[i].direction == 'above' else '<'} "
+            f"{price_alerts[i].target_price}"
+        ),
+        key="pa_delete_select",
+    )
+    if st.button("Usuń wybrany alert", type="secondary"):
+        price_alerts.pop(to_del)
+        save_price_alerts(price_alerts)
+        st.rerun()
+else:
+    st.info("Brak skonfigurowanych alertów cenowych.")
 
 if st.session_state.alert_auto_refresh:
     wait = int(st.session_state.alert_refresh_seconds)

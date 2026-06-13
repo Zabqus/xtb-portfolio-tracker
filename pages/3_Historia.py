@@ -232,66 +232,99 @@ with tab_closed:
             "Pobierz pełny eksport Excel z platformy XTB."
         )
     else:
-        stats = closed_positions_summary(closed)
-
-        col1, col2, col3, col4, col5 = st.columns(5)
-        with col1:
-            st.metric("Pozycje", stats["count"])
-        with col2:
-            st.metric(
-                "Łączny PnL",
-                format_currency(stats["total_pnl"], currency),
-                delta_color=pnl_delta_color(stats["total_pnl"]),
-            )
-        with col3:
-            st.metric("Win rate", f"{stats['win_rate_pct']:.1f}%")
-        with col4:
-            st.metric("Zyskowne", stats["winners"])
-        with col5:
-            st.metric("Stratne", stats["losers"])
-
-        try:
-            style_metric_cards(
-                background_color="#1e1e2e",
-                border_left_color="#4a9eff",
-                border_color="#2d2d3f",
-                box_shadow="rgba(0,0,0,0.2)",
-            )
-        except Exception:
-            pass
-
-        st.plotly_chart(
-            build_cumulative_realized_pnl(closed, currency),
-            use_container_width=True,
-        )
-        st.plotly_chart(
-            build_closed_pnl_chart(closed, currency),
-            use_container_width=True,
+        # Filtr roku podatkowego i kierunku PnL
+        closed = closed.copy()
+        closed["close_year"] = pd.to_datetime(closed["close_time"], errors="coerce").dt.year
+        available_years = sorted(
+            closed["close_year"].dropna().unique().astype(int).tolist(), reverse=True
         )
 
-        with st.expander("🏆 Top 5 zyskowne / 📉 Top 5 stratne (podgląd)"):
-            best, worst = get_top_trades(closed, n=5)
-            bcol, wcol = st.columns(2)
+        col_year, col_dir = st.columns([2, 3])
+        with col_year:
+            selected_year = st.selectbox(
+                "Rok podatkowy",
+                ["Wszystkie lata"] + available_years,
+                key="closed_year_filter",
+            )
+        with col_dir:
+            pnl_filter = st.radio(
+                "Filtruj",
+                ["Wszystkie", "Tylko zyski", "Tylko straty"],
+                horizontal=True,
+                key="closed_pnl_filter",
+            )
 
-            def _trade_display(df: pd.DataFrame) -> pd.DataFrame:
-                show = df[["ticker_xtb", "instrument", "pnl", "close_time"]].copy()
-                if "purchase_value" in df.columns:
-                    pv = df["purchase_value"].replace(0, pd.NA)
-                    show["ROI %"] = (df["pnl"] / pv * 100).round(1)
-                show["pnl"] = show["pnl"].round(2)
-                return show
+        closed_filtered = closed.copy()
+        if selected_year != "Wszystkie lata":
+            closed_filtered = closed_filtered[closed_filtered["close_year"] == int(selected_year)]
+        if pnl_filter == "Tylko zyski":
+            closed_filtered = closed_filtered[closed_filtered["pnl"] > 0]
+        elif pnl_filter == "Tylko straty":
+            closed_filtered = closed_filtered[closed_filtered["pnl"] < 0]
 
-            with bcol:
-                st.markdown("**Najlepsze**")
-                if not best.empty:
-                    st.dataframe(_trade_display(best), use_container_width=True, hide_index=True)
-            with wcol:
-                st.markdown("**Najgorsze**")
-                if not worst.empty:
-                    st.dataframe(_trade_display(worst), use_container_width=True, hide_index=True)
+        if closed_filtered.empty:
+            st.info("Brak zamkniętych pozycji dla wybranych filtrów.")
+        else:
+            stats = closed_positions_summary(closed_filtered)
 
-        st.subheader("Wszystkie zamknięte pozycje (XTB)")
-        render_closed_positions_table(closed)
+            col1, col2, col3, col4, col5 = st.columns(5)
+            with col1:
+                st.metric("Pozycje", stats["count"])
+            with col2:
+                st.metric(
+                    "Łączny PnL",
+                    format_currency(stats["total_pnl"], currency),
+                    delta_color=pnl_delta_color(stats["total_pnl"]),
+                )
+            with col3:
+                st.metric("Win rate", f"{stats['win_rate_pct']:.1f}%")
+            with col4:
+                st.metric("Zyskowne", stats["winners"])
+            with col5:
+                st.metric("Stratne", stats["losers"])
+
+            try:
+                style_metric_cards(
+                    background_color="#1e1e2e",
+                    border_left_color="#4a9eff",
+                    border_color="#2d2d3f",
+                    box_shadow="rgba(0,0,0,0.2)",
+                )
+            except Exception:
+                pass
+
+            st.plotly_chart(
+                build_cumulative_realized_pnl(closed_filtered, currency),
+                use_container_width=True,
+            )
+            st.plotly_chart(
+                build_closed_pnl_chart(closed_filtered, currency),
+                use_container_width=True,
+            )
+
+            with st.expander("🏆 Top 5 zyskowne / 📉 Top 5 stratne (podgląd)"):
+                best, worst = get_top_trades(closed_filtered, n=5)
+                bcol, wcol = st.columns(2)
+
+                def _trade_display(df: pd.DataFrame) -> pd.DataFrame:
+                    show = df[["ticker_xtb", "instrument", "pnl", "close_time"]].copy()
+                    if "purchase_value" in df.columns:
+                        pv = df["purchase_value"].replace(0, pd.NA)
+                        show["ROI %"] = (df["pnl"] / pv * 100).round(1)
+                    show["pnl"] = show["pnl"].round(2)
+                    return show
+
+                with bcol:
+                    st.markdown("**Najlepsze**")
+                    if not best.empty:
+                        st.dataframe(_trade_display(best), use_container_width=True, hide_index=True)
+                with wcol:
+                    st.markdown("**Najgorsze**")
+                    if not worst.empty:
+                        st.dataframe(_trade_display(worst), use_container_width=True, hide_index=True)
+
+            st.subheader("Wszystkie zamknięte pozycje (XTB)")
+            render_closed_positions_table(closed_filtered.drop(columns=["close_year"]))
 
 # --- Historia transakcji ---
 with tab_trades:

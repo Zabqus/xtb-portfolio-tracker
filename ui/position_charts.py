@@ -75,6 +75,80 @@ def build_price_volume_chart(
     return fig
 
 
+def build_price_drawdown_chart(
+    history: pd.DataFrame,
+    ticker: str,
+    avg_price: float,
+    period_label: str,
+) -> go.Figure:
+    """
+    Dwa panele:
+    - Górny: cena zamknięcia + linia avg_price (jak obecny wykres)
+    - Dolny: drawdown od ATH (running max → % poniżej szczytu)
+    """
+    dates = history["Date"] if "Date" in history.columns else history.index
+    close = history["Close"]
+    running_max = close.cummax()
+    drawdown_pct = (close - running_max) / running_max * 100  # zawsze ≤ 0
+
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        row_heights=[0.65, 0.35],
+        vertical_spacing=0.03,
+    )
+
+    # Cena
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=close,
+            name="Cena",
+            line=dict(color="#2196F3", width=1.5),
+        ),
+        row=1,
+        col=1,
+    )
+
+    # Linia avg_price
+    fig.add_hline(
+        y=avg_price,
+        line_dash="dash",
+        line_color="#FF9800",
+        annotation_text=f"Twoja śr. cena: {avg_price:.4f}",
+        annotation_position="bottom right",
+        row=1,
+        col=1,
+    )
+
+    # Drawdown
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=drawdown_pct,
+            fill="tozeroy",
+            name="Drawdown od ATH",
+            line=dict(color="#e74c3c", width=1),
+            fillcolor="rgba(231, 76, 60, 0.2)",
+        ),
+        row=2,
+        col=1,
+    )
+
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
+
+    current_dd = float(drawdown_pct.iloc[-1])
+    fig.update_yaxes(title_text="Cena", row=1, col=1)
+    fig.update_yaxes(title_text="Drawdown %", row=2, col=1)
+    fig.update_layout(
+        title=f"{ticker} — cena i drawdown od ATH ({period_label}) | Aktualny DD: {current_dd:.1f}%",
+        height=500,
+        showlegend=False,
+    )
+    return fig
+
+
 def build_benchmark_overlay_chart(
     merged: pd.DataFrame,
     instrument_name: str,

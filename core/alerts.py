@@ -4,7 +4,69 @@ Alerty pozycji — próg ±X% względem średniej ceny zakupu (ROI %).
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
 import pandas as pd
+
+PRICE_ALERTS_FILE = Path("price_alerts.json")
+
+
+@dataclass
+class PriceAlert:
+    ticker_xtb: str
+    ticker_yahoo: str
+    direction: str  # "above" | "below"
+    target_price: float
+    note: str = ""
+
+
+def load_price_alerts() -> list[PriceAlert]:
+    """Wczytuje alerty cenowe z lokalnego pliku JSON."""
+    if not PRICE_ALERTS_FILE.exists():
+        return []
+    try:
+        data = json.loads(PRICE_ALERTS_FILE.read_text(encoding="utf-8"))
+        return [PriceAlert(**item) for item in data]
+    except Exception:
+        return []
+
+
+def save_price_alerts(alerts: list[PriceAlert]) -> None:
+    """Zapisuje alerty cenowe do lokalnego pliku JSON."""
+    PRICE_ALERTS_FILE.write_text(
+        json.dumps([vars(a) for a in alerts], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def check_price_alerts(
+    alerts: list[PriceAlert],
+    analyzed: pd.DataFrame,
+) -> pd.DataFrame:
+    """Sprawdza które alerty cenowe zostały wyzwolone."""
+    price_map = dict(zip(analyzed["ticker_xtb"], analyzed["market_price"]))
+    triggered = []
+    for a in alerts:
+        current = price_map.get(a.ticker_xtb)
+        if current is None or pd.isna(current):
+            continue
+        hit = (a.direction == "above" and current >= a.target_price) or (
+            a.direction == "below" and current <= a.target_price
+        )
+        triggered.append(
+            {
+                "ticker_xtb": a.ticker_xtb,
+                "kierunek": "↑ Powyżej" if a.direction == "above" else "↓ Poniżej",
+                "cel": a.target_price,
+                "aktualna": round(float(current), 4),
+                "różnica": round(float(current) - a.target_price, 4),
+                "wyzwolony": hit,
+                "notatka": a.note,
+            }
+        )
+    return pd.DataFrame(triggered)
 
 
 def compute_roi_alerts(

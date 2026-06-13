@@ -4,6 +4,8 @@ Pobieranie danych rynkowych z Yahoo Finance (cache Streamlit).
 
 from __future__ import annotations
 
+import time
+
 import streamlit as st
 import yfinance as yf
 
@@ -14,6 +16,18 @@ YAHOO_PLN_PAIR: dict[str, str] = {
     "GBP": "GBPPLN=X",
     "CHF": "CHFPLN=X",
 }
+
+# Czas ostatniego realnego pobrania danych (nie z cache)
+_last_fetch_ts: dict[str, float] = {}
+
+
+def record_fetch_time(key: str = "prices") -> None:
+    _last_fetch_ts[key] = time.time()
+
+
+def get_fetch_age_seconds(key: str = "prices") -> float | None:
+    ts = _last_fetch_ts.get(key)
+    return (time.time() - ts) if ts else None
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -34,6 +48,7 @@ def fetch_last_prices(tickers: tuple[str, ...]) -> dict[str, float]:
         progress=False,
         threads=True,
     )
+    record_fetch_time("prices")
 
     prices: dict[str, float] = {}
 

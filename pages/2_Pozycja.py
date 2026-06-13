@@ -20,6 +20,7 @@ from core.session import (
 from ui.formatters import format_currency, pnl_delta_color
 from ui.position_charts import (
     build_benchmark_overlay_chart,
+    build_price_drawdown_chart,
     build_price_volume_chart,
     build_timing_gauge,
 )
@@ -46,6 +47,21 @@ selected = st.selectbox(
     format_func=lambda t: f"{t}  →  {analyzed.loc[analyzed['ticker_xtb'] == t, 'ticker_yahoo'].iloc[0]}",
 )
 set_selected_ticker(selected)
+
+# Nawigacja ← → między pozycjami
+current_idx = tickers.index(selected) if selected in tickers else 0
+
+nav_l, nav_info, nav_r = st.columns([1, 4, 1])
+with nav_l:
+    if st.button("← Poprzedni", disabled=(current_idx == 0), use_container_width=True):
+        set_selected_ticker(tickers[current_idx - 1])
+        st.rerun()
+with nav_info:
+    st.caption(f"Pozycja {current_idx + 1} z {len(tickers)}")
+with nav_r:
+    if st.button("Następny →", disabled=(current_idx == len(tickers) - 1), use_container_width=True):
+        set_selected_ticker(tickers[current_idx + 1])
+        st.rerun()
 
 row = get_position_row(selected)
 if row is None:
@@ -97,14 +113,30 @@ with tab_chart:
     if history.empty:
         st.error(f"Brak danych historycznych dla {yahoo}.")
     else:
-        st.plotly_chart(
-            build_price_volume_chart(history, avg_price, selected, period_label),
-            use_container_width=True,
+        chart_mode = st.radio(
+            "Widok",
+            ["Cena + Drawdown", "Cena + Wolumen"],
+            horizontal=True,
+            key="position_chart_mode",
         )
-        st.caption(
-            "Pomarańczowa linia — Twoja średnia cena zakupu z raportu XTB. "
-            "Wykres używa cen skorygowanych (auto_adjust)."
-        )
+        if chart_mode == "Cena + Drawdown":
+            st.plotly_chart(
+                build_price_drawdown_chart(history, selected, avg_price, period_label),
+                use_container_width=True,
+            )
+            st.caption(
+                "Górny panel: cena zamknięcia + Twoja średnia cena zakupu. "
+                "Dolny panel: drawdown — % poniżej dotychczasowego szczytu (ATH) w wybranym okresie."
+            )
+        else:
+            st.plotly_chart(
+                build_price_volume_chart(history, avg_price, selected, period_label),
+                use_container_width=True,
+            )
+            st.caption(
+                "Pomarańczowa linia — Twoja średnia cena zakupu z raportu XTB. "
+                "Wykres używa cen skorygowanych (auto_adjust)."
+            )
 
 with tab_fund:
     with st.spinner("Pobieranie danych fundamentalnych…"):
