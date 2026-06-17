@@ -38,6 +38,7 @@ if report is None:
         - **Eksport** – PDF i Excel (.xlsx) ze strony Portfolio
         - **Alerty** – pozycje powyżej progu ±X% ROI (w aplikacji, bez powiadomień systemowych)
         - **Konsensusy i sygnały** – cele analityków oraz sygnały kup / trzymaj / sprzedaj
+        - **Zwroty** – prawdziwa stopa zwrotu (MWR/XIRR + TWR), portfel vs benchmark, snapshoty
         - **Słownik** – krótkie wyjaśnienia wszystkich pojęć używanych w aplikacji
 
         ### Wskazówki
@@ -68,5 +69,5 @@ m4.metric("Zamknięte pozycje", closed_n)
 
 st.caption(
     "Przejdź do **Portfolio**, **Pozycja**, **Historia**, **Analiza**, **Watchlist**, "
-    "**Alokacja** lub **Słownik** w menu po lewej."
+    "**Alokacja**, **Zwroty** lub **Słownik** w menu po lewej."
 )

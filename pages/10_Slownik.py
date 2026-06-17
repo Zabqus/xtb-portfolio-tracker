@@ -170,6 +170,28 @@ TERMS: list[tuple[str, str, str]] = [
     ("Waluty i podatki", "Multi-account",
      "Połączenie dwóch eksportów XTB (np. konto PLN + EUR) w jeden widok całego majątku."),
 
+    # Stopy zwrotu i wartość w czasie
+    ("Stopy zwrotu", "MWR (zwrot ważony przepływami)",
+     "Money-Weighted Return – realna stopa zwrotu na Twoim kapitale, uwzględniająca "
+     "kiedy i ile wpłacałeś/wypłacałeś. Duża wpłata tuż przed wzrostem podbija MWR."),
+    ("Stopy zwrotu", "XIRR",
+     "Metoda liczenia MWR dla nieregularnych przepływów – znajduje roczną stopę, przy "
+     "której zdyskontowane wpłaty, wypłaty i bieżąca wartość konta sumują się do zera."),
+    ("Stopy zwrotu", "TWR (zwrot ważony czasem)",
+     "Time-Weighted Return – zwrot z samego doboru pozycji, bez wpływu momentu wpłat. "
+     "Porównywalny z indeksami i funduszami. Przy regularnych dopłatach TWR ≠ MWR."),
+    ("Stopy zwrotu", "Wpłaty netto",
+     "Suma wpłat pomniejszona o wypłaty – kapitał własny realnie włożony w konto."),
+    ("Stopy zwrotu", "Krzywa wzrostu (equity curve)",
+     "Wykres skumulowanego zwrotu w czasie, rebazowany do 100 na starcie. Pokazuje, "
+     "jak rosła wartość 1 jednostki zainwestowanej na początku okresu."),
+    ("Stopy zwrotu", "Alpha",
+     "Przewaga portfela nad benchmarkiem w punktach procentowych. Dodatnia = bijesz "
+     "rynek, ujemna = przegrywasz z indeksem."),
+    ("Stopy zwrotu", "Snapshot portfela",
+     "Zapisany lokalnie (snapshots.json) stan portfela w danym dniu: wartość, koszt, "
+     "PnL i pozycje. Buduje własny timeline wartości niezależny od Cash Operations."),
+
     # Sygnały
     ("Sygnały", "Sygnał kup / trzymaj / sprzedaj",
      "Syntetyczna ocena (skala 0–10) łącząca trzy źródła: analizę techniczną (40%), "

@@ -16,7 +16,8 @@ xtb_portfolio_tracker/
 │   ├── 6_Alokacja.py       # Sektor i region (USA/EU/PL)
 │   ├── 7_Alerty.py         # Progi ±X% ROI (alerty w aplikacji)
 │   ├── 8_Konsensusy_Sygnaly.py  # Konsensusy analityków + sygnały kup/trzymaj/sprzedaj
-│   └── 9_Slownik.py        # Słownik pojęć (statyczny, z wyszukiwarką)
+│   ├── 9_Zwroty.py         # Stopy zwrotu (MWR/XIRR + TWR), portfel vs benchmark, snapshoty
+│   └── 10_Slownik.py       # Słownik pojęć (statyczny, z wyszukiwarką)
 ├── core/
 │   ├── importer.py         # Parse XTB Excel/CSV
 │   ├── importer_maps.py    # Ticker → Yahoo
@@ -43,6 +44,9 @@ xtb_portfolio_tracker/
 │   ├── signals.py          # heurystyka sygnałów (technika + konsensus + P&L)
 │   ├── risk_metrics.py     # volatility, max DD, Sharpe, Calmar, korelacje
 │   ├── dividends.py        # parsowanie i agregacja dywidend z Cash Operations
+│   ├── returns.py          # MWR/XIRR + TWR (stopy zwrotu ważone przepływami/czasem)
+│   ├── portfolio_benchmark.py  # indeks TWR portfela vs S&P 500 / MSCI World / …
+│   ├── snapshots.py        # lokalne snapshoty portfela (snapshots.json)
 │   └── session.py          # st.session_state cache
 ├── ui/
 │   ├── sidebar.py          # Upload + currency settings
@@ -53,6 +57,7 @@ xtb_portfolio_tracker/
 │   ├── tables.py           # DataFrames with Polish headers
 │   ├── watchlist_charts.py # Wykresy watchlisty
 │   ├── allocation_charts.py # Wykresy alokacji
+│   ├── returns_charts.py   # Krzywa TWR, portfel vs benchmark, snapshoty
 │   └── risk_charts.py      # Heatmapa korelacji portfela
 └── requirements.txt
 ```
@@ -88,6 +93,9 @@ Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → **Portfo
 - **Dywidendy** – zakładka *Historia*: metryki, bar chart per rok, wykres kumulatywny, podsumowanie per ticker
 - **Metryki ryzyka** – na stronie *Portfolio*: volatility, max drawdown, Sharpe, Calmar, najlepszy/najgorszy dzień + macierz korelacji pozycji (ostrzeżenie przy korelacji ≥ 0.9)
 - **Wpłaty vs wartość** – wykres warstwowy na *Timeline* porównujący skumulowane wpłaty z wartością rynkową portfela
+- **Zwroty (MWR/TWR)** – zakładka *Zwroty*: stopa zwrotu ważona przepływami (MWR/XIRR, uwzględnia timing wpłat) i ważona czasem (TWR, porównywalna z indeksami); krótkie okresy (<90 dni) nie są annualizowane
+- **Portfel vs benchmark** – krzywa indeksu TWR portfela zestawiona z S&P 500 / MSCI World / NASDAQ 100 / WIG20 (alpha w punktach proc.)
+- **Snapshoty portfela** – lokalny zapis wartości/kosztu/PnL na dziś do `snapshots.json`; własny timeline niezależny od Cash Operations (działa też dla importu CSV)
 - **Słownik** – zakładka z wyszukiwarką i krótkimi wyjaśnieniami wszystkich pojęć używanych w aplikacji (pogrupowane tematycznie)
 - **Motyw wizualny** – wspólny `.streamlit/config.toml` + `ui/theme.py` (karty metryk, spójne nagłówki, responsywność na wąskich ekranach)
 

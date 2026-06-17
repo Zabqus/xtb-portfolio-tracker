@@ -20,6 +20,9 @@ watchlist.json
 # Lokalne alerty cenowe użytkownika
 price_alerts.json
 
+# Lokalne snapshoty portfela użytkownika
+snapshots.json
+
 # Czcionka pobierana przy pierwszym raporcie PDF
 assets/fonts/DejaVuSans.ttf
 
