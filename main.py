@@ -37,6 +37,7 @@ if report is None:
         - **Alokacja** – podział sektorowy i geograficzny (USA / EU / PL)
         - **Eksport** – PDF i Excel (.xlsx) ze strony Portfolio
         - **Alerty** – pozycje powyżej progu ±X% ROI (w aplikacji, bez powiadomień systemowych)
+        - **Konsensusy i sygnały** – cele analityków oraz sygnały kup / trzymaj / sprzedaj
 
         ### Wskazówki
 

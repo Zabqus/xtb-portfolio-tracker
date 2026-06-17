@@ -8,6 +8,12 @@ from streamlit_extras.metric_cards import style_metric_cards
 
 from core.closed_analysis import closed_positions_summary, get_top_trades
 from core.cost_basis import get_current_cost_basis
+from core.dividends import (
+    dividends_per_ticker,
+    dividends_per_year,
+    dividends_summary,
+    parse_dividends,
+)
 from core.session import (
     get_cost_basis_history,
     get_display_currency,
@@ -24,7 +30,13 @@ from ui.analytics_charts import (
 )
 from ui.charts import build_closed_pnl_chart
 from ui.formatters import format_currency, pnl_delta_color
-from ui.history_charts import build_cumulative_realized_pnl, build_portfolio_timeline_chart
+from ui.history_charts import (
+    build_contributions_vs_value_chart,
+    build_cumulative_dividends_chart,
+    build_cumulative_realized_pnl,
+    build_dividends_per_year_chart,
+    build_portfolio_timeline_chart,
+)
 from ui.sidebar import render_import_sidebar
 from ui.tables import render_closed_positions_table, render_round_trips_table
 
@@ -41,12 +53,21 @@ if report is None:
 currency = get_display_currency()
 closed = report.closed_positions
 
-tab_timeline, tab_analytics, tab_closed, tab_trades = st.tabs(
+(
+    tab_timeline,
+    tab_analytics,
+    tab_closed,
+    tab_trades,
+    tab_tax,
+    tab_dividends,
+) = st.tabs(
     [
         "Timeline portfela",
         "Trade Analytics",
         "Zamknięte pozycje",
         "Historia transakcji",
+        "💰 Podatek Belki",
+        "💵 Dywidendy",
     ]
 )
 
@@ -92,6 +113,18 @@ with tab_timeline:
             st.plotly_chart(
                 build_portfolio_timeline_chart(timeline, currency),
                 use_container_width=True,
+            )
+
+            st.markdown("#### Wpłaty vs wartość rynkowa")
+            st.plotly_chart(
+                build_contributions_vs_value_chart(
+                    timeline, report.cash_operations, currency
+                ),
+                use_container_width=True,
+            )
+            st.caption(
+                "Zielony obszar powyżej niebieskiej linii = Twój zysk rynkowy. "
+                "Obszar poniżej = strata względem wpłaconych środków."
             )
 
 # --- Trade Analytics ---
@@ -363,3 +396,179 @@ with tab_trades:
                     )
 
             st.dataframe(display, use_container_width=True, hide_index=True)
+
+# --- Podatek Belki ---
+with tab_tax:
+    st.subheader("Kalkulator podatku Belki (19%)")
+    st.caption(
+        "Szacunek na podstawie zrealizowanych zysków/strat z arkusza **Closed Positions** "
+        "oraz dywidend z **Cash Operations**."
+    )
+
+    if closed is None or closed.empty or "close_time" not in closed.columns:
+        st.warning(
+            "Brak arkusza **Closed Positions** w pliku. "
+            "Pobierz pełny eksport Excel z platformy XTB."
+        )
+    else:
+        tax_df = closed.copy()
+        tax_df["close_dt"] = pd.to_datetime(tax_df["close_time"], errors="coerce")
+        tax_df = tax_df.dropna(subset=["close_dt", "pnl"])
+        tax_df["tax_year"] = tax_df["close_dt"].dt.year
+
+        years = sorted(tax_df["tax_year"].unique().astype(int).tolist(), reverse=True)
+        if not years:
+            st.info("Brak zamkniętych pozycji z poprawną datą zamknięcia.")
+        else:
+            current_year = pd.Timestamp.now().year
+            default_idx = years.index(current_year) if current_year in years else 0
+            selected_tax_year = st.selectbox(
+                "Rok podatkowy",
+                years,
+                index=default_idx,
+                key="tax_year_filter",
+            )
+
+            year_df = tax_df[tax_df["tax_year"] == int(selected_tax_year)].copy()
+            year_df = year_df.sort_values("close_dt")
+
+            total_gain = float(year_df.loc[year_df["pnl"] > 0, "pnl"].sum())
+            total_loss = float(year_df.loc[year_df["pnl"] < 0, "pnl"].sum())
+            net_income = total_gain + total_loss
+            tax_due = max(0.0, net_income * 0.19)
+
+            t1, t2, t3, t4 = st.columns(4)
+            with t1:
+                st.metric("Zrealizowane zyski", format_currency(total_gain, currency))
+            with t2:
+                st.metric("Zrealizowane straty", format_currency(total_loss, currency))
+            with t3:
+                st.metric(
+                    "Podstawa opodatkowania",
+                    format_currency(net_income, currency),
+                    delta_color=pnl_delta_color(net_income),
+                )
+            with t4:
+                st.metric("Szacunkowy podatek (19%)", format_currency(tax_due, currency))
+
+            if net_income < 0:
+                st.info(
+                    f"Strata netto **{format_currency(net_income, currency)}** — "
+                    "podatek = 0. Stratę można rozliczyć w kolejnych latach "
+                    "(do 5 lat, max 50% rocznie)."
+                )
+
+            # Dywidendy w danym roku
+            if report.cash_operations is not None:
+                div_all = parse_dividends(report.cash_operations)
+                if not div_all.empty:
+                    div_year = div_all[div_all["year"] == int(selected_tax_year)]
+                    total_dividends = float(div_year["amount"].sum())
+                    if total_dividends != 0:
+                        tax_on_dividends = total_dividends * 0.19
+                        st.divider()
+                        d1, d2 = st.columns(2)
+                        with d1:
+                            st.metric(
+                                "Dywidendy (rok)",
+                                format_currency(total_dividends, currency),
+                            )
+                        with d2:
+                            st.metric(
+                                "Podatek od dywidend (19%)",
+                                format_currency(tax_on_dividends, currency),
+                            )
+                        st.caption(
+                            "ℹ️ Dywidendy zagraniczne mogą być już częściowo opodatkowane "
+                            "u źródła (withholding tax). Faktyczna dopłata w PL może być niższa."
+                        )
+
+            # Tabela narastająca
+            if not year_df.empty:
+                show = year_df[["ticker_xtb", "close_dt", "pnl"]].copy()
+                show["cumulative_pnl"] = show["pnl"].cumsum()
+                show["cumulative_tax"] = show["cumulative_pnl"].clip(lower=0) * 0.19
+                show = show.rename(
+                    columns={
+                        "ticker_xtb": "Ticker",
+                        "close_dt": "Data zamknięcia",
+                        "pnl": "PnL",
+                        "cumulative_pnl": "Skumulowany PnL",
+                        "cumulative_tax": "Podatek narastający",
+                    }
+                )
+                for col in ("PnL", "Skumulowany PnL", "Podatek narastający"):
+                    show[col] = show[col].round(2)
+                st.dataframe(show, use_container_width=True, hide_index=True)
+
+            st.caption(
+                "⚠️ To jest szacunek edukacyjny. Skonsultuj z doradcą podatkowym. "
+                "Nie uwzględnia podatku u źródła, ulg ani umów o unikaniu podwójnego "
+                "opodatkowania."
+            )
+
+# --- Dywidendy ---
+with tab_dividends:
+    st.subheader("Dywidendy")
+
+    if report.cash_operations is None:
+        st.warning("Wymagany natywny eksport Excel z arkuszem Cash Operations.")
+    else:
+        dividends = parse_dividends(report.cash_operations)
+        if dividends.empty:
+            st.info("Brak operacji dywidendowych w wybranym okresie eksportu.")
+        else:
+            current_year = pd.Timestamp.now().year
+            stats = dividends_summary(dividends, current_year=current_year)
+
+            d1, d2, d3, d4 = st.columns(4)
+            with d1:
+                st.metric("Łączne dywidendy", format_currency(stats["total"], currency))
+            with d2:
+                st.metric(
+                    f"W roku {current_year}",
+                    format_currency(stats["current_year"], currency),
+                )
+            with d3:
+                st.metric("Liczba wypłat", stats["count"])
+            with d4:
+                st.metric("Śr. na wypłatę", format_currency(stats["avg"], currency))
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.plotly_chart(
+                    build_dividends_per_year_chart(dividends_per_year(dividends), currency),
+                    use_container_width=True,
+                )
+            with c2:
+                st.plotly_chart(
+                    build_cumulative_dividends_chart(dividends, currency),
+                    use_container_width=True,
+                )
+
+            st.markdown("#### Dywidendy per ticker")
+            per_ticker = dividends_per_ticker(dividends)
+            if not per_ticker.empty:
+                show_pt = per_ticker.rename(
+                    columns={
+                        "ticker_xtb": "Ticker",
+                        "total": "Suma",
+                        "payouts": "Liczba wypłat",
+                        "last_date": "Ostatnia wypłata",
+                    }
+                )
+                show_pt["Suma"] = show_pt["Suma"].round(2)
+                st.dataframe(show_pt, use_container_width=True, hide_index=True)
+
+            with st.expander("Wszystkie wypłaty (surowe dane)"):
+                show_raw = dividends.rename(
+                    columns={
+                        "date": "Data",
+                        "year": "Rok",
+                        "ticker_xtb": "Ticker",
+                        "amount": "Kwota",
+                        "comment": "Komentarz",
+                    }
+                )
+                show_raw["Kwota"] = show_raw["Kwota"].round(2)
+                st.dataframe(show_raw, use_container_width=True, hide_index=True)

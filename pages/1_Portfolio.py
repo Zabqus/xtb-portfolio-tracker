@@ -8,14 +8,22 @@ from core.analyzer import portfolio_summary, portfolio_summary_by_account
 from core.excel_export import ExcelExportError, default_excel_filename, generate_excel_bytes
 from core.pdf_report import PdfReportError, default_report_filename, generate_monthly_pdf_bytes
 from core.market_data import get_fetch_age_seconds
+from core.risk_metrics import (
+    DEFAULT_RISK_FREE,
+    build_correlation_matrix,
+    compute_risk_metrics,
+    high_correlation_pairs,
+)
 from core.session import (
     get_analyzed_open,
     get_display_currency,
+    get_portfolio_timeline,
     get_report,
     set_selected_ticker,
 )
 from ui.charts import build_allocation_pie, build_pnl_bar_chart, build_portfolio_treemap
 from ui.formatters import format_currency, pnl_delta_color
+from ui.risk_charts import build_correlation_heatmap
 from ui.sidebar import render_import_sidebar
 from ui.tables import render_open_positions_table
 
@@ -125,6 +133,92 @@ else:
         st.plotly_chart(build_allocation_pie(analyzed, currency), use_container_width=True)
     with c2:
         st.plotly_chart(build_pnl_bar_chart(analyzed, currency), use_container_width=True)
+
+with st.expander("📊 Metryki ryzyka portfela"):
+    if report.cash_operations is None:
+        st.info(
+            "Metryki ryzyka wymagają natywnego eksportu Excel z arkuszem Cash Operations "
+            "(potrzebny timeline portfela)."
+        )
+    else:
+        default_rf = DEFAULT_RISK_FREE.get(currency, 0.045)
+        risk_free_pct = st.slider(
+            "Stopa wolna od ryzyka (roczna, %)",
+            min_value=0.0,
+            max_value=10.0,
+            value=round(default_rf * 100, 2),
+            step=0.25,
+            key="risk_free_slider",
+            help="Używana do Sharpe ratio. Domyślnie orientacyjna stopa dla waluty wyświetlania.",
+        )
+
+        with st.spinner("Liczenie metryk ryzyka…"):
+            timeline = get_portfolio_timeline()
+            metrics = compute_risk_metrics(timeline, risk_free=risk_free_pct / 100)
+
+        if not metrics.has_data:
+            st.warning("Za mało danych w timeline, aby policzyć metryki ryzyka.")
+        else:
+            r1, r2, r3, r4, r5 = st.columns(5)
+            with r1:
+                st.metric(
+                    "Zmienność (roczna)",
+                    f"{metrics.volatility_pct:.1f}%",
+                    help="Odchylenie standardowe dziennych zwrotów × √252.",
+                )
+            with r2:
+                st.metric(
+                    "Max Drawdown",
+                    f"{metrics.max_drawdown_pct:.1f}%",
+                    delta_color="inverse",
+                    help="Największy spadek od szczytu wartości portfela.",
+                )
+            with r3:
+                st.metric(
+                    "Sharpe Ratio",
+                    f"{metrics.sharpe_ratio:.2f}" if metrics.sharpe_ratio is not None else "—",
+                    help="(Zwrot roczny − stopa wolna od ryzyka) / zmienność.",
+                )
+            with r4:
+                st.metric(
+                    "Calmar Ratio",
+                    f"{metrics.calmar_ratio:.2f}" if metrics.calmar_ratio is not None else "—",
+                    help="Zwrot roczny / |max drawdown|.",
+                )
+            with r5:
+                best = f"{metrics.best_day_pct:+.1f}%" if metrics.best_day_pct is not None else "—"
+                worst = f"{metrics.worst_day_pct:+.1f}%" if metrics.worst_day_pct is not None else "—"
+                st.metric("Najlepszy / najgorszy dzień", best, delta=worst)
+
+            st.caption(
+                f"Szacowany zwrot roczny (annualizowany): **{metrics.annual_return_pct:+.1f}%**. "
+                "Metryki liczone na podstawie dziennej wyceny portfela z timeline."
+            )
+
+with st.expander("🔗 Korelacja między pozycjami"):
+    tickers_yahoo = tuple(sorted(analyzed["ticker_yahoo"].dropna().unique().tolist()))
+    if len(tickers_yahoo) < 2:
+        st.info("Korelacja wymaga co najmniej dwóch pozycji z danymi cenowymi.")
+    else:
+        corr_period = st.selectbox(
+            "Okres do korelacji",
+            ["1Y", "3Y", "5Y"],
+            key="correlation_period",
+        )
+        with st.spinner("Pobieranie historii cen i liczenie korelacji…"):
+            corr = build_correlation_matrix(tickers_yahoo, corr_period)
+
+        if corr.empty:
+            st.warning("Za mało wspólnych danych cenowych, aby policzyć korelację.")
+        else:
+            st.plotly_chart(build_correlation_heatmap(corr), use_container_width=True)
+            pairs = high_correlation_pairs(corr, threshold=0.9)
+            if pairs:
+                st.warning("⚠️ Wysoka korelacja (≥ 0.9) — możliwe duplikowanie ekspozycji:")
+                for a, b, value in pairs:
+                    st.caption(f"• **{a}** ↔ **{b}**: korelacja {value:.2f}")
+            else:
+                st.caption("Brak par o korelacji ≥ 0.9 — dywersyfikacja wygląda zdrowo.")
 
 if st.button("Sektor i region (USA / EU / PL) →", key="portfolio_to_allocation"):
     st.switch_page("pages/6_Alokacja.py")

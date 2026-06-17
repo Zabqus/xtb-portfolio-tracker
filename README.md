@@ -14,7 +14,8 @@ xtb_portfolio_tracker/
 │   ├── 4_Analiza.py        # Analiza techniczna (pandas_ta)
 │   ├── 5_Watchlist.py      # Tickery spoza portfela, porównanie zwrotów
 │   ├── 6_Alokacja.py       # Sektor i region (USA/EU/PL)
-│   └── 7_Alerty.py         # Progi ±X% ROI (alerty w aplikacji)
+│   ├── 7_Alerty.py         # Progi ±X% ROI (alerty w aplikacji)
+│   └── 8_Konsensusy_Sygnaly.py  # Konsensusy analityków + sygnały kup/trzymaj/sprzedaj
 ├── core/
 │   ├── importer.py         # Parse XTB Excel/CSV
 │   ├── importer_maps.py    # Ticker → Yahoo
@@ -38,6 +39,9 @@ xtb_portfolio_tracker/
 │   ├── excel_export.py     # eksport .xlsx (Portfolio / Historia / Analiza)
 │   ├── multi_account.py    # merge PLN + EUR (multi-account)
 │   ├── alerts.py           # progi ROI ±X%
+│   ├── signals.py          # heurystyka sygnałów (technika + konsensus + P&L)
+│   ├── risk_metrics.py     # volatility, max DD, Sharpe, Calmar, korelacje
+│   ├── dividends.py        # parsowanie i agregacja dywidend z Cash Operations
 │   └── session.py          # st.session_state cache
 ├── ui/
 │   ├── sidebar.py          # Upload + currency settings
@@ -46,16 +50,18 @@ xtb_portfolio_tracker/
 │   ├── formatters.py       # Currency / metric styling
 │   ├── tables.py           # DataFrames with Polish headers
 │   ├── watchlist_charts.py # Wykresy watchlisty
-│   └── allocation_charts.py # Wykresy alokacji
+│   ├── allocation_charts.py # Wykresy alokacji
+│   └── risk_charts.py      # Heatmapa korelacji portfela
 └── requirements.txt
 ```
 
 ## Uruchomienie (Cursor / terminal)
 
+Przy pierwszym uruchomieniu najpierw wykonaj kroki z sekcji [Pierwsza instalacja](#pierwsza-instalacja) poniżej.
+
 ```powershell
-cd D:\xtb_portfolio_tracker
-.venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python -m streamlit run main.py
+cd ścieżka\do\xtb_tracker
+.\.venv\Scripts\python -m streamlit run main.py
 ```
 
 Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → **Portfolio**, **Pozycja** lub **Historia**.
@@ -75,6 +81,11 @@ Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → **Portfo
 - **Eksport Excel** – sformatowany `.xlsx` z arkuszami Portfolio / Historia / Analiza (`openpyxl`)
 - **Multi-account** – dwa eksporty XTB (np. PLN + EUR), merge i jeden widok całego majątku
 - **Alerty** – zakładka z listą pozycji powyżej progu ±X% ROI; auto-odświeżanie (`st.rerun()`)
+- **Konsensusy i sygnały** – strona z tabelą celów/ratingów analityków (upside %, P/E, pasek 52W) oraz syntetycznym sygnałem *kup / trzymaj / sprzedaj* (technika 40% + konsensus 40% + P&L 20%, skala 0–10)
+- **Podatek Belki** – zakładka *Historia* z szacunkiem podatku 19% od zrealizowanych zysków/strat i dywidend per rok podatkowy (z disclaimerem)
+- **Dywidendy** – zakładka *Historia*: metryki, bar chart per rok, wykres kumulatywny, podsumowanie per ticker
+- **Metryki ryzyka** – na stronie *Portfolio*: volatility, max drawdown, Sharpe, Calmar, najlepszy/najgorszy dzień + macierz korelacji pozycji (ostrzeżenie przy korelacji ≥ 0.9)
+- **Wpłaty vs wartość** – wykres warstwowy na *Timeline* porównujący skumulowane wpłaty z wartością rynkową portfela
 
 ### Eksport (Portfolio)
 
@@ -89,11 +100,11 @@ PDF: czcionka z `assets/fonts/` lub systemowa (Arial). Wymaga `fpdf2` i `kaleido
 
 ```powershell
 # pandas-ta — wymaga Python 3.12+
-.venv\Scripts\python -m pip install pandas-ta
+.\.venv\Scripts\python -m pip install pandas-ta
 
 # TA-Lib — najpierw natywna biblioteka C (Windows: np. wheel z https://github.com/cgohlke/talib-build/releases)
 # potem:
-.venv\Scripts\python -m pip install TA-Lib
+.\.venv\Scripts\python -m pip install TA-Lib
 ```
 
 Kolejność silników w `core/technicals.py`: **pandas_ta** → **TA-Lib** → **pandas**.
@@ -108,3 +119,51 @@ Natywny plik Excel z arkuszami:
 ## Mapowanie tickerów
 
 Edytuj `core/importer_maps.py` (np. `VWCE` → `VWCE.DE`, `XTB.PL` → `XTB.WA`).
+
+## Pierwsza instalacja
+
+Wymagania: **Python 3.12+** (m.in. dla `pandas-ta`). Folder `.venv` nie jest w repozytorium — po `git clone` trzeba go utworzyć lokalnie.
+
+### 1. Pobierz projekt i wejdź do katalogu
+
+```powershell
+git clone https://github.com/Zabqus/xtb-portfolio-tracker.git
+cd xtb-portfolio-tracker
+```
+
+### 2. Sprawdź wersję Pythona
+
+```powershell
+py --version
+```
+
+Jeśli `python` nie działa, a `py` tak — w kolejnych krokach używaj launchera `py`.
+
+### 3. Utwórz środowisko wirtualne
+
+```powershell
+py -3.12 -m venv .venv
+```
+
+### 4. Zainstaluj zależności
+
+W PowerShell ścieżka musi zaczynać się od `.\` — inaczej pojawi się błąd *„The module '.venv' could not be loaded”*:
+
+```powershell
+.\.venv\Scripts\python -m pip install --upgrade pip
+.\.venv\Scripts\python -m pip install -r requirements.txt
+```
+
+### 5. Uruchom aplikację
+
+```powershell
+.\.venv\Scripts\python -m streamlit run main.py
+```
+
+### Problemy?
+
+| Objaw | Rozwiązanie |
+|-------|-------------|
+| `Permission denied` przy `venv` | Usuń niepełny folder: `Remove-Item -Recurse -Force .venv`, zamknij inne terminale / procesy Pythona, spróbuj ponownie |
+| Błąd o module `.venv` | Użyj `.\.venv\Scripts\python`, nie `.venv\Scripts\python` |
+| `python` nie znaleziony | Użyj `py -3.12` zamiast `python` |
