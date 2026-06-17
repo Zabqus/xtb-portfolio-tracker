@@ -47,6 +47,9 @@ xtb_portfolio_tracker/
 │   ├── returns.py          # MWR/XIRR + TWR (stopy zwrotu ważone przepływami/czasem)
 │   ├── portfolio_benchmark.py  # indeks TWR portfela vs S&P 500 / MSCI World / …
 │   ├── snapshots.py        # lokalne snapshoty portfela (snapshots.json)
+│   ├── tax_harvest.py      # tax-loss harvesting (podatek Belki 19%)
+│   ├── dividend_calendar.py # forward yield + ex-date otwartych pozycji
+│   ├── rebalance.py        # sugestie dokupień do docelowej alokacji
 │   └── session.py          # st.session_state cache
 ├── ui/
 │   ├── sidebar.py          # Upload + currency settings
@@ -96,6 +99,10 @@ Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → **Portfo
 - **Zwroty (MWR/TWR)** – zakładka *Zwroty*: stopa zwrotu ważona przepływami (MWR/XIRR, uwzględnia timing wpłat) i ważona czasem (TWR, porównywalna z indeksami); krótkie okresy (<90 dni) nie są annualizowane
 - **Portfel vs benchmark** – krzywa indeksu TWR portfela zestawiona z S&P 500 / MSCI World / NASDAQ 100 / WIG20 (alpha w punktach proc.)
 - **Snapshoty portfela** – lokalny zapis wartości/kosztu/PnL na dziś do `snapshots.json`; własny timeline niezależny od Cash Operations (działa też dla importu CSV)
+- **Tax-loss harvesting** – zakładka *Historia → Podatek Belki*: ranking otwartych pozycji ze stratą, tarcza podatkowa (19%) i strata do przeniesienia na kolejne lata
+- **Kalendarz dywidend** – zakładka *Historia → Dywidendy*: forward yield, najbliższe ex-date i szacowany roczny przychód z dywidend otwartych pozycji
+- **Rebalancing helper** – zakładka *Alokacja*: docelowe udziały sektor/region vs obecne, dryf, sugerowane dokupienia/redukcje oraz rozdział nowej gotówki
+- **Ekspozycja walutowa** – zakładka *Alokacja*: rozbicie wg waluty notowań instrumentu (ryzyko FX), z dodatkowym podziałem per konto przy multi-account
 - **Słownik** – zakładka z wyszukiwarką i krótkimi wyjaśnieniami wszystkich pojęć używanych w aplikacji (pogrupowane tematycznie)
 - **Motyw wizualny** – wspólny `.streamlit/config.toml` + `ui/theme.py` (karty metryk, spójne nagłówki, responsywność na wąskich ekranach)
 

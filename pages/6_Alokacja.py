@@ -13,8 +13,14 @@ from core.allocation import (
     get_currency_exposure,
 )
 from core.analyzer import portfolio_summary
+from core.rebalance import compute_rebalance, normalize_targets, suggest_cash_allocation
 from core.session import get_analyzed_open, get_report
-from ui.allocation_charts import REGION_COLORS, build_breakdown_bar, build_breakdown_pie
+from ui.allocation_charts import (
+    REGION_COLORS,
+    build_breakdown_bar,
+    build_breakdown_pie,
+    build_rebalance_chart,
+)
 from ui.formatters import format_currency
 from ui.sidebar import render_import_sidebar
 
@@ -134,6 +140,103 @@ if not unknown_region.empty:
         )
 
 st.divider()
+st.subheader("⚖️ Rebalancing — sugestie dokupień")
+st.caption(
+    "Ustaw docelowy udział koszyków, a aplikacja policzy, ile dokupić lub zredukować, "
+    "by trafić w cel. Opcjonalnie rozdziel nową gotówkę bez sprzedaży istniejących pozycji."
+)
+
+rb_dim = st.radio(
+    "Wymiar rebalansu", ["Sektor", "Region"], horizontal=True, key="rebalance_dim"
+)
+rb_group_col = "sector" if rb_dim == "Sektor" else "region"
+rb_breakdown = sector_df if rb_dim == "Sektor" else region_df
+
+if rb_breakdown.empty or len(rb_breakdown) < 2:
+    st.info("Za mało koszyków do rebalansu (potrzebne co najmniej dwa).")
+else:
+    total_value = float(rb_breakdown["market_value"].sum())
+
+    target_editor = rb_breakdown[[rb_group_col, "weight_pct"]].copy()
+    target_editor.columns = ["Koszyk", "Obecnie %"]
+    target_editor["Obecnie %"] = target_editor["Obecnie %"].round(1)
+    target_editor["Cel %"] = target_editor["Obecnie %"].round(0)
+
+    edited = st.data_editor(
+        target_editor,
+        hide_index=True,
+        use_container_width=True,
+        disabled=["Koszyk", "Obecnie %"],
+        column_config={
+            "Cel %": st.column_config.NumberColumn(
+                "Cel %", min_value=0.0, max_value=100.0, step=1.0,
+                help="Docelowy udział koszyka (suma powinna wynosić 100%).",
+            )
+        },
+        key="rebalance_targets_editor",
+    )
+
+    target_map = {
+        str(r["Koszyk"]): float(r["Cel %"]) for _, r in edited.iterrows()
+    }
+    _, target_sum = normalize_targets(target_map)
+
+    new_cash = st.number_input(
+        f"Nowa gotówka do zainwestowania ({currency}, opcjonalnie)",
+        min_value=0.0, value=0.0, step=100.0, key="rebalance_new_cash",
+    )
+
+    if abs(target_sum - 100.0) > 0.5:
+        st.warning(f"Suma celów = **{target_sum:.0f}%** (powinno być 100%). Wynik i tak policzę proporcjonalnie.")
+
+    rb = compute_rebalance(rb_breakdown, target_map, rb_group_col, new_cash=new_cash)
+    if not rb.empty:
+        st.plotly_chart(build_rebalance_chart(rb, rb_group_col), use_container_width=True)
+
+        rb_show = rb.copy()
+        rb_show["current_pct"] = rb_show["current_pct"].round(1)
+        rb_show["target_pct"] = rb_show["target_pct"].round(1)
+        rb_show["drift_pp"] = rb_show["drift_pp"].round(1)
+        rb_show["delta_value"] = rb_show["delta_value"].round(2)
+        st.dataframe(
+            rb_show[[rb_group_col, "current_pct", "target_pct", "drift_pp", "delta_value", "action"]].rename(
+                columns={
+                    rb_group_col: "Koszyk",
+                    "current_pct": "Obecnie %",
+                    "target_pct": "Cel %",
+                    "drift_pp": "Dryf (pp)",
+                    "delta_value": f"Zmiana ({currency})",
+                    "action": "Akcja",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.caption(
+            "Dryf = obecny − docelowy udział (pp). Dodatnia „Zmiana” = dokup, ujemna = zredukuj. "
+            "Sugestie na poziomie koszyków — konkretny instrument w koszyku wybierasz sam."
+        )
+
+        if new_cash > 0:
+            cash_alloc = suggest_cash_allocation(rb_breakdown, target_map, rb_group_col, new_cash)
+            if not cash_alloc.empty:
+                st.markdown(f"**Rozdział nowej gotówki ({format_currency(new_cash, currency)}) — tylko dokupienia:**")
+                ca = cash_alloc.copy()
+                ca["suggested_buy"] = ca["suggested_buy"].round(2)
+                ca["buy_share_pct"] = ca["buy_share_pct"].round(1)
+                st.dataframe(
+                    ca[[rb_group_col, "suggested_buy", "buy_share_pct"]].rename(
+                        columns={
+                            rb_group_col: "Koszyk",
+                            "suggested_buy": f"Dokup ({currency})",
+                            "buy_share_pct": "Udział wpłaty %",
+                        }
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+st.divider()
 st.subheader("Ekspozycja walutowa")
 st.caption(
     "Ile % portfela jest denominowane w każdej walucie. "
@@ -177,6 +280,46 @@ else:
             f"Ponad {dominant_pct:.0f}% portfela jest w **{dominant_ccy}**. "
             "Rozważ dywersyfikację walutową lub hedging, jeśli zależy Ci na stabilności w PLN."
         )
+
+    st.caption(
+        "ℹ️ To **waluta notowań instrumentu**, nie waluta konta. Kupując na koncie EUR "
+        "akcję notowaną w USD, masz ekspozycję na USD — to ona decyduje o ryzyku kursowym."
+    )
+
+    # Multi-account: rozbicie ekspozycji walutowej per konto.
+    report_alloc = get_report()
+    if (
+        report_alloc is not None
+        and report_alloc.is_merged
+        and "account_label" in analyzed.columns
+        and analyzed["account_label"].nunique() > 1
+    ):
+        st.markdown("**Ekspozycja walutowa per konto**")
+        st.caption(
+            "Pokazuje, jak każde konto (np. PLN i EUR) realnie rozkłada się na waluty "
+            "instrumentów — konto EUR może być pełne aktywów USD."
+        )
+        acc_ccy = (
+            analyzed.dropna(subset=["market_value", "currency", "account_label"])
+            .groupby(["account_label", "currency"], as_index=False)["market_value"]
+            .sum()
+        )
+        if not acc_ccy.empty:
+            fig_acc = px.bar(
+                acc_ccy,
+                x="account_label",
+                y="market_value",
+                color="currency",
+                title=f"Waluta instrumentów per konto ({currency})",
+                color_discrete_map={"USD": "#2196F3", "EUR": "#4CAF50", "PLN": "#FF9800", "GBP": "#9C27B0"},
+                text_auto=".2s",
+            )
+            fig_acc.update_layout(
+                height=380, barmode="stack",
+                xaxis_title="Konto", yaxis_title=f"Wartość ({currency})",
+                legend_title="Waluta instr.",
+            )
+            st.plotly_chart(fig_acc, use_container_width=True)
 
 st.divider()
 st.subheader("Szczegóły per pozycja")

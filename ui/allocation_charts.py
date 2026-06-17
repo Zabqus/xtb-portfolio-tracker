@@ -88,3 +88,37 @@ def build_breakdown_bar(
         height=max(320, 40 * len(chart)),
     )
     return fig
+
+
+def build_rebalance_chart(rebalance: pd.DataFrame, group_col: str) -> go.Figure:
+    """Grupowany słupek: bieżący udział vs docelowy dla każdego koszyka."""
+    fig = go.Figure()
+    if rebalance is None or rebalance.empty:
+        fig.update_layout(title="Brak danych do rebalansu", height=360)
+        return fig
+
+    chart = rebalance.copy()
+    labels = chart[group_col].astype(str)
+    fig.add_trace(
+        go.Bar(
+            x=labels, y=chart["current_pct"], name="Obecnie",
+            marker_color="#94A3B8",
+            text=[f"{v:.0f}%" for v in chart["current_pct"]], textposition="outside",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=labels, y=chart["target_pct"], name="Cel",
+            marker_color="#2563EB",
+            text=[f"{v:.0f}%" for v in chart["target_pct"]], textposition="outside",
+        )
+    )
+    fig.update_layout(
+        title="Alokacja: obecna vs docelowa",
+        barmode="group",
+        height=400,
+        yaxis_title="Udział (%)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        margin=dict(t=56),
+    )
+    return fig

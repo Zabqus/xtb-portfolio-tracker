@@ -121,6 +121,12 @@ TERMS: list[tuple[str, str, str]] = [
      "(small/mid/large cap)."),
     ("Fundamenty i konsensus", "Dywidenda / stopa dywidendy",
      "Wypłata części zysku dla akcjonariuszy. Stopa dywidendy = dywidenda roczna / cena akcji."),
+    ("Fundamenty i konsensus", "Forward yield",
+     "Prognozowana stopa dywidendy na najbliższy rok (na bazie ostatniej wypłaty). "
+     "Mnożąc przez wartość pozycji, szacujesz roczny przychód z dywidend."),
+    ("Fundamenty i konsensus", "Ex-date (data odcięcia)",
+     "Dzień, od którego kupno akcji nie daje już prawa do najbliższej dywidendy. Aby ją "
+     "dostać, trzeba mieć akcje przed ex-date."),
     ("Fundamenty i konsensus", "Cena docelowa (target price)",
      "Średnia prognoza ceny od analityków (targetMeanPrice). Orientacyjny poziom, dokąd "
      "ich zdaniem może dojść kurs."),
@@ -154,6 +160,15 @@ TERMS: list[tuple[str, str, str]] = [
      "Wysoka korelacja oznacza słabą dywersyfikację."),
     ("Alokacja i dywersyfikacja", "Ekspozycja",
      "Wielkość zaangażowania w dany instrument, sektor lub rynek – ile portfela na nim „wisi”."),
+    ("Alokacja i dywersyfikacja", "Ekspozycja walutowa",
+     "Podział portfela wg **waluty notowań instrumentu** (nie waluty konta). Akcja USD "
+     "kupiona na koncie EUR to ekspozycja na USD – stąd ryzyko kursowe."),
+    ("Alokacja i dywersyfikacja", "Rebalancing",
+     "Przywracanie docelowych udziałów koszyków (sektor/region) przez dokupienie "
+     "niedoważonych i redukcję przeważonych pozycji."),
+    ("Alokacja i dywersyfikacja", "Dryf alokacji",
+     "Odchylenie bieżącego udziału koszyka od docelowego (w punktach proc.). Duży dryf = "
+     "sygnał do rebalancingu."),
 
     # Waluty i podatki
     ("Waluty i podatki", "Waluta konta",
@@ -169,6 +184,12 @@ TERMS: list[tuple[str, str, str]] = [
      "szacunek per rok podatkowy – orientacyjnie, nie jako porada podatkowa."),
     ("Waluty i podatki", "Multi-account",
      "Połączenie dwóch eksportów XTB (np. konto PLN + EUR) w jeden widok całego majątku."),
+    ("Waluty i podatki", "Tax-loss harvesting",
+     "Realizacja strat (sprzedaż pozycji „pod kreską”) przed końcem roku, by pomniejszyć "
+     "podstawę opodatkowania zysków kapitałowych. W PL strata nie pomniejsza dywidend."),
+    ("Waluty i podatki", "Tarcza podatkowa",
+     "Realne zmniejszenie podatku dzięki zrealizowanej stracie = strata × 19% (do wysokości "
+     "tegorocznych zysków). Nadwyżkę rozliczasz w kolejnych latach (do 5 lat, max 50%/rok)."),
 
     # Stopy zwrotu i wartość w czasie
     ("Stopy zwrotu", "MWR (zwrot ważony przepływami)",

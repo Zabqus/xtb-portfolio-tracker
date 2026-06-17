@@ -14,13 +14,16 @@ from core.dividends import (
     dividends_summary,
     parse_dividends,
 )
+from core.dividend_calendar import build_dividend_calendar
 from core.session import (
+    get_analyzed_open,
     get_cost_basis_history,
     get_display_currency,
     get_portfolio_timeline,
     get_report,
     get_trade_analytics,
 )
+from core.tax_harvest import compute_tax_harvest
 from core.transactions import parse_cash_operations_trades
 from ui.analytics_charts import (
     build_cost_basis_chart,
@@ -501,6 +504,89 @@ with tab_tax:
                     show[col] = show[col].round(2)
                 st.dataframe(show, use_container_width=True, hide_index=True)
 
+            # --- Tax-loss harvesting ---
+            st.divider()
+            st.markdown("#### 🎯 Tax-loss harvesting")
+            st.caption(
+                "Sprzedaż otwartych pozycji ze stratą **przed końcem roku** obniża podstawę "
+                "opodatkowania zysków kapitałowych (Belka 19%). Strata nie pomniejsza dywidend."
+            )
+
+            current_year = pd.Timestamp.now().year
+            if int(selected_tax_year) != current_year:
+                st.info(
+                    f"Wybrany rok podatkowy to **{selected_tax_year}**. Tax-loss harvesting "
+                    f"ma sens dla **bieżącego roku ({current_year})** — przełącz rok wyżej."
+                )
+
+            analyzed_tlh = get_analyzed_open()
+            if analyzed_tlh is None or analyzed_tlh.empty:
+                st.info("Brak otwartych pozycji do analizy.")
+            else:
+                harvest = compute_tax_harvest(
+                    analyzed_tlh, realized_gain_ytd=net_income, currency=currency
+                )
+                if not harvest.has_losers:
+                    st.success(
+                        "Brak otwartych pozycji ze stratą — nie ma czego realizować. 👍"
+                    )
+                else:
+                    h1, h2, h3, h4 = st.columns(4)
+                    with h1:
+                        st.metric(
+                            "Zrealizowany wynik (rok)",
+                            format_currency(harvest.realized_gain_ytd, currency),
+                            delta_color=pnl_delta_color(harvest.realized_gain_ytd),
+                        )
+                    with h2:
+                        st.metric(
+                            "Strata do zebrania",
+                            format_currency(harvest.harvestable_loss, currency),
+                            help="Suma niezrealizowanych strat na otwartych pozycjach.",
+                        )
+                    with h3:
+                        st.metric(
+                            "Oszczędność podatku (ten rok)",
+                            format_currency(harvest.tax_saved, currency),
+                            help="Spadek podatku Belki, jeśli zrealizujesz straty.",
+                        )
+                    with h4:
+                        st.metric(
+                            "Do przeniesienia (5 lat)",
+                            format_currency(harvest.carry_forward, currency),
+                            help="Nadwyżka straty ponad tegoroczne zyski — rozliczysz w kolejnych latach.",
+                        )
+
+                    if harvest.tax_saved <= 0 and harvest.realized_gain_ytd <= 0:
+                        st.caption(
+                            "W tym roku nie masz zysków do skompensowania, ale zrealizowana "
+                            "strata przejdzie na kolejne lata (max 50% rocznie przez 5 lat)."
+                        )
+
+                    cand = harvest.losers.copy()
+                    cand["market_value"] = cand["market_value"].round(2)
+                    cand["loss"] = cand["loss"].round(2)
+                    cand["roi_pct"] = cand["roi_pct"].round(1)
+                    cand["tax_shield"] = cand["tax_shield"].round(2)
+                    st.dataframe(
+                        cand.rename(
+                            columns={
+                                "ticker_xtb": "Ticker",
+                                "market_value": f"Wartość ({currency})",
+                                "loss": f"Strata ({currency})",
+                                "roi_pct": "ROI %",
+                                "tax_shield": f"Tarcza podatkowa ({currency})",
+                            }
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                    st.caption(
+                        "„Tarcza podatkowa” = realne zmniejszenie tegorocznego podatku z danej "
+                        "pozycji (do wysokości tegorocznych zysków). ⚠️ Po sprzedaży uważaj na "
+                        "natychmiastowy odkup tych samych walorów oraz na koszty prowizji/spreadu."
+                    )
+
             st.caption(
                 "⚠️ To jest szacunek edukacyjny. Skonsultuj z doradcą podatkowym. "
                 "Nie uwzględnia podatku u źródła, ulg ani umów o unikaniu podwójnego "
@@ -516,7 +602,10 @@ with tab_dividends:
     else:
         dividends = parse_dividends(report.cash_operations)
         if dividends.empty:
-            st.info("Brak operacji dywidendowych w wybranym okresie eksportu.")
+            st.info(
+                "Brak historycznych wypłat dywidend w okresie eksportu — "
+                "poniżej znajdziesz prognozę forward dla otwartych pozycji."
+            )
         else:
             current_year = pd.Timestamp.now().year
             stats = dividends_summary(dividends, current_year=current_year)
@@ -572,3 +661,72 @@ with tab_dividends:
                 )
                 show_raw["Kwota"] = show_raw["Kwota"].round(2)
                 st.dataframe(show_raw, use_container_width=True, hide_index=True)
+
+        # Forward kalendarz — zawsze, niezależnie od historii wypłat.
+        st.divider()
+        st.markdown("#### 📅 Kalendarz i forward yield (otwarte pozycje)")
+        st.caption(
+            "Prognozowana stopa dywidendy i najbliższe daty odcięcia (ex-date) dla "
+            "obecnie otwartych pozycji — dane z Yahoo Finance `.info`."
+        )
+        analyzed_div = get_analyzed_open()
+        if analyzed_div is None or analyzed_div.empty:
+            st.info("Brak otwartych pozycji do prognozy dywidend.")
+        else:
+            with st.spinner("Pobieranie danych dywidendowych…"):
+                cal, cal_summary = build_dividend_calendar(analyzed_div, currency)
+
+            if cal.empty:
+                st.info(
+                    "Żadna z otwartych pozycji nie wypłaca dywidend (lub Yahoo nie podaje "
+                    "stopy). Spółki wzrostowe i część ETF-ów akumulacyjnych nie płacą dywidend."
+                )
+            else:
+                fc1, fc2, fc3 = st.columns(3)
+                with fc1:
+                    st.metric(
+                        "Szac. roczny przychód",
+                        format_currency(cal_summary["annual_income"], currency),
+                        help="Wartość pozycji × forward yield (suma po pozycjach).",
+                    )
+                with fc2:
+                    st.metric(
+                        "Forward yield portfela",
+                        f"{cal_summary['portfolio_yield_pct']:.2f}%",
+                    )
+                with fc3:
+                    st.metric("Pozycje płacące", cal_summary["paying_positions"])
+
+                cal_show = cal.copy()
+                cal_show["yield_pct"] = cal_show["yield_pct"].round(2)
+                cal_show["annual_income"] = cal_show["annual_income"].round(2)
+                cal_show["ex_date"] = cal_show["ex_date"].apply(
+                    lambda d: d.strftime("%Y-%m-%d") if pd.notna(d) else "—"
+                )
+                cal_show["ex_upcoming"] = cal_show["ex_upcoming"].map(
+                    {True: "🟢 nadchodzi", False: "⚪ minęła/szac."}
+                )
+                cal_show["rate_per_share"] = cal_show["rate_per_share"].apply(
+                    lambda v: round(v, 4) if pd.notna(v) else None
+                )
+                st.dataframe(
+                    cal_show[
+                        ["ticker_xtb", "yield_pct", "ex_date", "ex_upcoming",
+                         "annual_income", "rate_per_share"]
+                    ].rename(
+                        columns={
+                            "ticker_xtb": "Ticker",
+                            "yield_pct": "Yield %",
+                            "ex_date": "Ex-date",
+                            "ex_upcoming": "Status",
+                            "annual_income": f"Szac. rocznie ({currency})",
+                            "rate_per_share": "Na akcję",
+                        }
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                st.caption(
+                    "ℹ️ Forward yield to prognoza na bazie ostatniej dywidendy — rzeczywiste "
+                    "wypłaty mogą się różnić. Ex-date z przeszłości to wartość orientacyjna."
+                )
