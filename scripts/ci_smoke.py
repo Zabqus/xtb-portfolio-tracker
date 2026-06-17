@@ -44,6 +44,7 @@ def main() -> int:
         "ui.charts",
         "ui.formatters",
         "ui.tables",
+        "ui.theme",
         "ui.sidebar",
         "ui.position_charts",
         "ui.history_charts",

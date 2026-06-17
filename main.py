@@ -38,6 +38,7 @@ if report is None:
         - **Eksport** – PDF i Excel (.xlsx) ze strony Portfolio
         - **Alerty** – pozycje powyżej progu ±X% ROI (w aplikacji, bez powiadomień systemowych)
         - **Konsensusy i sygnały** – cele analityków oraz sygnały kup / trzymaj / sprzedaj
+        - **Słownik** – krótkie wyjaśnienia wszystkich pojęć używanych w aplikacji
 
         ### Wskazówki
 
@@ -58,15 +59,14 @@ else:
     st.success(f"Załadowano: **{report.filename}**")
 
 closed_n = len(report.closed_positions) if report.closed_positions is not None else 0
-st.markdown(
-    f"""
-    | | |
-    |---|---|
-    | Tryb | **{"Multi-account" if report.is_merged else "Jedno konto"}** |
-    | Waluta konta | **{report.account_currency}** |
-    | Otwarte pozycje | **{len(report.open_positions)}** |
-    | Zamknięte pozycje | **{closed_n}** |
 
-    Przejdź do **Portfolio**, **Pozycja**, **Historia**, **Analiza**, **Watchlist** lub **Alokacja** w menu po lewej.
-    """
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Tryb", "Multi-account" if report.is_merged else "Jedno konto")
+m2.metric("Waluta konta", report.account_currency)
+m3.metric("Otwarte pozycje", len(report.open_positions))
+m4.metric("Zamknięte pozycje", closed_n)
+
+st.caption(
+    "Przejdź do **Portfolio**, **Pozycja**, **Historia**, **Analiza**, **Watchlist**, "
+    "**Alokacja** lub **Słownik** w menu po lewej."
 )

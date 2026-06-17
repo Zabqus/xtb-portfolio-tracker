@@ -15,7 +15,8 @@ xtb_portfolio_tracker/
 │   ├── 5_Watchlist.py      # Tickery spoza portfela, porównanie zwrotów
 │   ├── 6_Alokacja.py       # Sektor i region (USA/EU/PL)
 │   ├── 7_Alerty.py         # Progi ±X% ROI (alerty w aplikacji)
-│   └── 8_Konsensusy_Sygnaly.py  # Konsensusy analityków + sygnały kup/trzymaj/sprzedaj
+│   ├── 8_Konsensusy_Sygnaly.py  # Konsensusy analityków + sygnały kup/trzymaj/sprzedaj
+│   └── 9_Slownik.py        # Słownik pojęć (statyczny, z wyszukiwarką)
 ├── core/
 │   ├── importer.py         # Parse XTB Excel/CSV
 │   ├── importer_maps.py    # Ticker → Yahoo
@@ -45,6 +46,7 @@ xtb_portfolio_tracker/
 │   └── session.py          # st.session_state cache
 ├── ui/
 │   ├── sidebar.py          # Upload + currency settings
+│   ├── theme.py            # Globalny motyw / CSS (karty metryk, responsywność)
 │   ├── charts.py           # Portfolio Plotly charts
 │   ├── position_charts.py  # Price/volume, benchmark, timing gauge
 │   ├── formatters.py       # Currency / metric styling
@@ -86,6 +88,8 @@ Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → **Portfo
 - **Dywidendy** – zakładka *Historia*: metryki, bar chart per rok, wykres kumulatywny, podsumowanie per ticker
 - **Metryki ryzyka** – na stronie *Portfolio*: volatility, max drawdown, Sharpe, Calmar, najlepszy/najgorszy dzień + macierz korelacji pozycji (ostrzeżenie przy korelacji ≥ 0.9)
 - **Wpłaty vs wartość** – wykres warstwowy na *Timeline* porównujący skumulowane wpłaty z wartością rynkową portfela
+- **Słownik** – zakładka z wyszukiwarką i krótkimi wyjaśnieniami wszystkich pojęć używanych w aplikacji (pogrupowane tematycznie)
+- **Motyw wizualny** – wspólny `.streamlit/config.toml` + `ui/theme.py` (karty metryk, spójne nagłówki, responsywność na wąskich ekranach)
 
 ### Eksport (Portfolio)
 

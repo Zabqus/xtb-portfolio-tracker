@@ -13,6 +13,7 @@ from core.session import (
     process_uploads,
     set_display_currency,
 )
+from ui.theme import inject_global_css
 
 
 def render_import_sidebar() -> bool:
@@ -21,6 +22,7 @@ def render_import_sidebar() -> bool:
 
     Zwraca True, gdy raport jest załadowany i gotowy do analizy.
     """
+    inject_global_css()
     init_session_state()
 
     with st.sidebar:
