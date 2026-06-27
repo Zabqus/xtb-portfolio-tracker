@@ -143,6 +143,89 @@ def build_correlation_matrix(tickers_yahoo: tuple[str, ...], period: str) -> pd.
     return df.pct_change().dropna().corr()
 
 
+def compute_drawdown_series(timeline: pd.DataFrame) -> pd.DataFrame:
+    """
+    Seria drawdownu portfela (% poniżej szczytu) oraz wartości rynkowej.
+
+    Kolumny: date, market_value, drawdown_pct.
+    """
+    if timeline is None or timeline.empty or "market_value" not in timeline.columns:
+        return pd.DataFrame()
+
+    df = timeline.dropna(subset=["market_value"]).copy()
+    if "date" in df.columns:
+        df = df.sort_values("date")
+    df = df[df["market_value"] > 0]
+    if df.empty:
+        return pd.DataFrame()
+
+    values = df["market_value"].reset_index(drop=True)
+    rolling_max = values.cummax()
+    drawdown = (values - rolling_max) / rolling_max * 100
+
+    out = pd.DataFrame(
+        {
+            "date": df["date"].reset_index(drop=True) if "date" in df.columns else range(len(df)),
+            "market_value": values,
+            "drawdown_pct": drawdown,
+        }
+    )
+    return out
+
+
+def compute_rolling_risk(
+    timeline: pd.DataFrame,
+    risk_free: float = 0.0525,
+    windows: tuple[int, ...] = (30, 60, 90),
+) -> pd.DataFrame:
+    """
+    Rolling zmienność (roczna %), Sharpe i max drawdown dla okien 30/60/90 dni.
+
+    Kolumny: date, vol_30d, sharpe_30d, max_dd_30d, …
+    """
+    if timeline is None or timeline.empty or "market_value" not in timeline.columns:
+        return pd.DataFrame()
+
+    df = timeline.dropna(subset=["market_value"]).copy()
+    if "date" in df.columns:
+        df = df.sort_values("date")
+    df = df[df["market_value"] > 0]
+    if len(df) < max(windows, default=30) + 2:
+        return pd.DataFrame()
+
+    values = df["market_value"].reset_index(drop=True)
+    returns = values.pct_change()
+    dates = df["date"].reset_index(drop=True) if "date" in df.columns else pd.RangeIndex(len(df))
+
+    result = pd.DataFrame({"date": dates})
+
+    for w in windows:
+        roll_std = returns.rolling(w).std()
+        result[f"vol_{w}d"] = roll_std * np.sqrt(TRADING_DAYS) * 100
+
+        roll_mean = returns.rolling(w).mean()
+        ann_ret = roll_mean * TRADING_DAYS
+        ann_vol = roll_std * np.sqrt(TRADING_DAYS)
+        result[f"sharpe_{w}d"] = np.where(
+            ann_vol > 0,
+            (ann_ret - risk_free) / ann_vol,
+            np.nan,
+        )
+
+        max_dds: list[float] = []
+        for i in range(len(values)):
+            if i < w - 1:
+                max_dds.append(np.nan)
+                continue
+            segment = values.iloc[i - w + 1 : i + 1]
+            seg_max = segment.cummax()
+            dd = (segment - seg_max) / seg_max * 100
+            max_dds.append(float(dd.min()))
+        result[f"max_dd_{w}d"] = max_dds
+
+    return result
+
+
 def high_correlation_pairs(
     corr: pd.DataFrame,
     threshold: float = 0.9,

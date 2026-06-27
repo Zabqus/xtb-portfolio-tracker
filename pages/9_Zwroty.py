@@ -12,6 +12,7 @@ from core.portfolio_benchmark import (
     build_portfolio_vs_benchmark,
     relative_performance,
 )
+from core.benchmark_risk import compute_benchmark_risk_series, summarize_benchmark_risk
 from core.returns import MIN_ANNUALIZE_DAYS, compute_mwr, compute_twr
 from core.session import (
     get_analyzed_open,
@@ -28,9 +29,11 @@ from core.snapshots import (
 )
 from ui.formatters import format_currency, pnl_delta_color
 from ui.returns_charts import (
+    build_benchmark_risk_chart,
     build_portfolio_vs_benchmark_chart,
     build_snapshots_chart,
     build_twr_index_chart,
+    build_twr_with_drawdown_chart,
 )
 from ui.sidebar import render_import_sidebar
 from ui.theme import bootstrap_page
@@ -162,6 +165,13 @@ with tab_returns:
 
             st.plotly_chart(build_twr_index_chart(twr.index), use_container_width=True)
 
+            st.markdown("##### Krzywa TWR + drawdown (underwater)")
+            st.plotly_chart(build_twr_with_drawdown_chart(twr.index), use_container_width=True)
+            st.caption(
+                "Dolny panel pokazuje spadek od szczytu (%) — jak w funduszach: "
+                "equity curve + underwater chart."
+            )
+
         with st.expander("ℹ️ MWR vs TWR — czym się różnią?"):
             st.markdown(
                 """
@@ -237,6 +247,45 @@ with tab_benchmark:
                     "Obie krzywe startują od 100 w tym samym dniu. Powyżej benchmarku = "
                     "Twój portfel bije rynek; poniżej = przegrywa z rynkiem."
                 )
+
+                with st.spinner("Liczenie beta i tracking error…"):
+                    risk_series = compute_benchmark_risk_series(twr.index, benchmark_name)
+                    risk_summary = summarize_benchmark_risk(risk_series)
+
+                if risk_summary.has_data:
+                    st.markdown("##### Beta i tracking error (rolling 1Y)")
+                    r1, r2, r3 = st.columns(3)
+                    with r1:
+                        st.metric(
+                            "Beta (ostatnia)",
+                            f"{risk_summary.beta:.2f}" if risk_summary.beta is not None else "—",
+                            help="Wrażliwość portfela na ruchy benchmarku.",
+                        )
+                    with r2:
+                        st.metric(
+                            "Tracking error",
+                            f"{risk_summary.tracking_error_pct:.1f}%"
+                            if risk_summary.tracking_error_pct is not None
+                            else "—",
+                            help="Roczne odchylenie dziennych zwrotów portfela od benchmarku.",
+                        )
+                    with r3:
+                        st.metric(
+                            "Information ratio",
+                            f"{risk_summary.information_ratio:.2f}"
+                            if risk_summary.information_ratio is not None
+                            else "—",
+                            help="Nadwyżka zwrotu / tracking error.",
+                        )
+                    st.plotly_chart(
+                        build_benchmark_risk_chart(risk_series, benchmark_name),
+                        use_container_width=True,
+                    )
+                else:
+                    st.caption(
+                        "Beta i tracking error wymagają co najmniej ~1 roku wspólnych danych "
+                        "portfela i benchmarku."
+                    )
 
 # ───────────────────────── Snapshoty ─────────────────────────
 with tab_snapshots:

@@ -46,7 +46,10 @@ def main() -> int:
         "core.snapshots",
         "core.tax_harvest",
         "core.dividend_calendar",
-        "core.rebalance",
+        "core.concentration",
+        "core.pnl_breakdown",
+        "core.benchmark_risk",
+        "core.position_risk",
         "core.preferences",
         "ui.charts",
         "ui.formatters",
@@ -63,6 +66,7 @@ def main() -> int:
         "ui.watchlist_charts",
         "ui.allocation_charts",
         "ui.risk_charts",
+        "ui.pnl_charts",
     ]
 
     for name in modules:

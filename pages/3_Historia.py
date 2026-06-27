@@ -40,6 +40,7 @@ from ui.history_charts import (
     build_dividends_per_year_chart,
     build_portfolio_timeline_chart,
 )
+from ui.returns_charts import build_portfolio_value_drawdown_chart
 from ui.sidebar import render_import_sidebar
 from ui.tables import render_closed_positions_table, render_round_trips_table
 from ui.theme import bootstrap_page, metric_card_style
@@ -118,6 +119,15 @@ with tab_timeline:
             st.plotly_chart(
                 build_portfolio_timeline_chart(timeline, currency),
                 use_container_width=True,
+            )
+
+            st.markdown("#### Wartość portfela + drawdown")
+            st.plotly_chart(
+                build_portfolio_value_drawdown_chart(timeline, currency),
+                use_container_width=True,
+            )
+            st.caption(
+                "Górny panel: wartość rynkowa. Dolny: underwater chart — spadek od szczytu (%)."
             )
 
             st.markdown("#### Wpłaty vs wartość rynkowa")

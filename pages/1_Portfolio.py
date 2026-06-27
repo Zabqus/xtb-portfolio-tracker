@@ -8,10 +8,18 @@ from core.analyzer import portfolio_summary, portfolio_summary_by_account
 from core.excel_export import ExcelExportError, default_excel_filename, generate_excel_bytes
 from core.pdf_report import PdfReportError, default_report_filename, generate_monthly_pdf_bytes
 from core.market_data import get_fetch_age_seconds
+from core.allocation import enrich_portfolio_allocation
+from core.concentration import (
+    compute_concentration_metrics,
+    concentration_history_from_snapshots,
+)
+from core.pnl_breakdown import compute_pnl_breakdown
+from core.position_risk import build_position_risk_data
 from core.risk_metrics import (
     DEFAULT_RISK_FREE,
     build_correlation_matrix,
     compute_risk_metrics,
+    compute_rolling_risk,
     high_correlation_pairs,
 )
 from core.session import (
@@ -23,7 +31,13 @@ from core.session import (
 )
 from ui.charts import build_allocation_pie, build_pnl_bar_chart, build_portfolio_treemap
 from ui.formatters import format_currency, pnl_delta_color
-from ui.risk_charts import build_correlation_heatmap
+from ui.pnl_charts import build_pnl_waterfall_chart
+from ui.risk_charts import (
+    build_concentration_chart,
+    build_correlation_heatmap,
+    build_position_risk_bubble,
+    build_rolling_risk_chart,
+)
 from ui.sidebar import render_import_sidebar
 from ui.tables import render_open_positions_table
 from ui.theme import bootstrap_page
@@ -136,6 +150,80 @@ else:
     with c2:
         st.plotly_chart(build_pnl_bar_chart(analyzed, currency), use_container_width=True)
 
+st.subheader("Portfolio i ryzyko")
+st.caption("Nowe wizualizacje analityczne — istniejące wykresy powyżej pozostają bez zmian.")
+
+with st.expander("💧 Wodospad P&L", expanded=False):
+    breakdown = compute_pnl_breakdown(
+        analyzed,
+        closed=report.closed_positions,
+        cash_ops=report.cash_operations,
+        account_currency=report.account_currency,
+    )
+    if not breakdown.has_data:
+        st.info("Brak danych do wykresu wodospadowego.")
+    else:
+        st.plotly_chart(build_pnl_waterfall_chart(breakdown), use_container_width=True)
+        w1, w2, w3, w4 = st.columns(4)
+        with w1:
+            st.metric("Niezrealizowany", format_currency(breakdown.unrealized_pnl, currency))
+        with w2:
+            st.metric("Zrealizowany", format_currency(breakdown.realized_pnl, currency))
+        with w3:
+            st.metric("Dywidendy", format_currency(breakdown.dividends, currency))
+        with w4:
+            st.metric(
+                "Podatek (szac.)",
+                format_currency(breakdown.estimated_tax, currency),
+                help="Szacunek Belki 19% od dodatnich zysków kapitałowych i dywidend.",
+            )
+        st.caption(
+            "Całkowity wynik = niezrealizowany + zrealizowany + dywidendy − podatek. "
+            "Podatek to szacunek edukacyjny — patrz zakładka Historia → Podatek Belki."
+        )
+
+with st.expander("📊 Koncentracja (HHI / Top-N)", expanded=False):
+    with st.spinner("Liczenie koncentracji…"):
+        enriched = enrich_portfolio_allocation(analyzed)
+        conc = compute_concentration_metrics(enriched)
+        conc_history = concentration_history_from_snapshots(currency)
+
+    if conc.position_count == 0:
+        st.info("Brak pozycji do analizy koncentracji.")
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("Top-5", f"{conc.top5_pct:.1f}%")
+        with c2:
+            st.metric("HHI", f"{conc.hhi * 100:.0f}", help="Herfindahl-Hirschman ×100 (im wyżej, tym bardziej skoncentrowany).")
+        with c3:
+            st.metric("Efektywne N", f"{conc.effective_n:.1f}")
+        with c4:
+            st.metric("Pozycje", conc.position_count)
+        st.plotly_chart(
+            build_concentration_chart(conc, conc_history if not conc_history.empty else None),
+            use_container_width=True,
+        )
+        if conc_history.empty:
+            st.caption(
+                "Brak historii HHI — zapisuj snapshoty na stronie Zwroty, "
+                "aby śledzić koncentrację w czasie."
+            )
+        else:
+            st.caption("Dolny panel: HHI i Top-5% z zapisanych snapshotów portfela.")
+
+with st.expander("🫧 Mapa ryzyka pozycji", expanded=False):
+    with st.spinner("Pobieranie zmienności 90d i sektorów…"):
+        risk_map = build_position_risk_data(analyzed)
+    if risk_map.empty:
+        st.info("Brak danych do mapy ryzyka pozycji.")
+    else:
+        st.plotly_chart(build_position_risk_bubble(risk_map, currency), use_container_width=True)
+        st.caption(
+            "Oś X = waga w portfelu, oś Y = ROI%, rozmiar bąbla = zmienność 90d, kolor = sektor. "
+            "Duża pozycja w prawym górnym rogu z dużym bąblem = wysoka ekspozycja i ryzyko."
+        )
+
 with st.expander("📊 Metryki ryzyka portfela"):
     if report.cash_operations is None:
         st.info(
@@ -196,6 +284,17 @@ with st.expander("📊 Metryki ryzyka portfela"):
                 f"Szacowany zwrot roczny (annualizowany): **{metrics.annual_return_pct:+.1f}%**. "
                 "Metryki liczone na podstawie dziennej wyceny portfela z timeline."
             )
+
+            rolling = compute_rolling_risk(timeline, risk_free=risk_free_pct / 100)
+            if not rolling.empty:
+                st.markdown("##### Rolling risk metrics (trend w czasie)")
+                st.plotly_chart(build_rolling_risk_chart(rolling), use_container_width=True)
+                st.caption(
+                    "Zmienność, Sharpe i max drawdown w oknach 30 / 60 / 90 dni — "
+                    "pokazują trend ryzyka, nie tylko jedną liczbę."
+                )
+            else:
+                st.caption("Za mało danych timeline do rolling risk metrics (min. ~90 dni).")
 
 with st.expander("🔗 Korelacja między pozycjami"):
     tickers_yahoo = tuple(sorted(analyzed["ticker_yahoo"].dropna().unique().tolist()))
