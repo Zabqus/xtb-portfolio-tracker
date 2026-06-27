@@ -7,6 +7,7 @@ import streamlit as st
 
 from core.session import get_report, init_session_state
 from ui.sidebar import render_import_sidebar
+from ui.theme import bootstrap_page
 
 st.set_page_config(
     page_title="XTB Portfolio Tracker",
@@ -14,6 +15,7 @@ st.set_page_config(
     layout="wide",
 )
 
+bootstrap_page()
 init_session_state()
 
 st.title("📈 XTB Portfolio Tracker")

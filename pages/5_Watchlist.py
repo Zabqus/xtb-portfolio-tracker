@@ -20,8 +20,10 @@ from core.watchlist import (
     resolve_watchlist_symbol,
 )
 from ui.sidebar import render_import_sidebar
+from ui.theme import bootstrap_page
 from ui.watchlist_charts import build_normalized_lines_chart, build_vs_portfolio_bar
 
+bootstrap_page()
 st.title("👁️ Watchlist")
 
 st.caption(

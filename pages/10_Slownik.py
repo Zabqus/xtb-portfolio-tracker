@@ -11,9 +11,11 @@ from __future__ import annotations
 import streamlit as st
 
 from ui.sidebar import render_import_sidebar
-from ui.theme import glossary_term_html, muted_text_color
+from ui.theme import bootstrap_page, glossary_term_html, muted_text_color
 
 st.set_page_config(page_title="Słownik – XTB Tracker", page_icon="📖", layout="wide")
+
+bootstrap_page()
 
 # Sidebar (upload + waluta) dla spójności; słownik działa bez raportu.
 render_import_sidebar()

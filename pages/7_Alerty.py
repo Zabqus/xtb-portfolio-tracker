@@ -21,7 +21,9 @@ from core.alerts import (
 from core.session import get_analyzed_open, get_display_currency, get_report, init_session_state
 from ui.formatters import format_currency
 from ui.sidebar import render_import_sidebar
+from ui.theme import bootstrap_page
 
+bootstrap_page()
 init_session_state()
 
 if "alert_threshold_pct" not in st.session_state:

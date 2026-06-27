@@ -33,7 +33,6 @@ from ui.analytics_charts import (
 )
 from ui.charts import build_closed_pnl_chart
 from ui.formatters import format_currency, pnl_delta_color
-from ui.theme import metric_card_style
 from ui.history_charts import (
     build_contributions_vs_value_chart,
     build_cumulative_dividends_chart,
@@ -43,7 +42,9 @@ from ui.history_charts import (
 )
 from ui.sidebar import render_import_sidebar
 from ui.tables import render_closed_positions_table, render_round_trips_table
+from ui.theme import bootstrap_page, metric_card_style
 
+bootstrap_page()
 st.title("📜 Historia i zamknięte pozycje")
 
 if not render_import_sidebar():

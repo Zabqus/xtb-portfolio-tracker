@@ -16,7 +16,9 @@ from core.signals import (
 )
 from core.technicals import fetch_technicals, latest_indicator_snapshot
 from ui.sidebar import render_import_sidebar
+from ui.theme import bootstrap_page
 
+bootstrap_page()
 st.title("🎯 Konsensusy i sygnały")
 
 if not render_import_sidebar():

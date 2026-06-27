@@ -26,7 +26,9 @@ from ui.formatters import format_currency, pnl_delta_color
 from ui.risk_charts import build_correlation_heatmap
 from ui.sidebar import render_import_sidebar
 from ui.tables import render_open_positions_table
+from ui.theme import bootstrap_page
 
+bootstrap_page()
 st.title("📊 Portfolio – otwarte pozycje")
 
 if not render_import_sidebar():

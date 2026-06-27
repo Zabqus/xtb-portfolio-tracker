@@ -21,6 +21,36 @@ LOSS = "#DC2626"
 LOSS_DARK = "#EF4444"
 
 _THEME_OPTIONS = ("light", "dark")
+_THEME_STORAGE_KEY = "xtb_color_theme"
+
+_CRITICAL_CSS = {
+    "dark": """
+        html, body,
+        .stApp, [data-testid="stAppViewContainer"] {
+            background-color: #0F172A !important;
+            color: #E2E8F0 !important;
+        }
+        [data-testid="stSidebar"] {
+            background-color: #0B1220 !important;
+        }
+        [data-testid="stSidebarNav"] {
+            background-color: #0B1220 !important;
+        }
+    """,
+    "light": """
+        html, body,
+        .stApp, [data-testid="stAppViewContainer"] {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+        }
+        [data-testid="stSidebar"] {
+            background-color: #F8FAFC !important;
+        }
+        [data-testid="stSidebarNav"] {
+            background-color: #F8FAFC !important;
+        }
+    """,
+}
 
 _CSS_SHARED = """
 <style>
@@ -186,7 +216,84 @@ def init_color_theme() -> None:
 
 
 def _persist_color_theme() -> None:
-    save_preference("color_theme", st.session_state.color_theme)
+    theme = st.session_state.color_theme
+    save_preference("color_theme", theme)
+    _sync_client_theme(theme)
+
+
+def _sync_client_theme(theme: str) -> None:
+    """Natychmiastowa synchronizacja motywu w localStorage (anty-flicker)."""
+    safe = theme if theme in _THEME_OPTIONS else "light"
+    st.html(
+        f"""<script>
+        window.__xtbSetTheme && window.__xtbSetTheme({safe!r});
+        </script>""",
+        unsafe_allow_javascript=True,
+    )
+
+
+def _theme_preload_html(server_theme: str) -> str:
+    critical = {k: v.replace("`", "\\`") for k, v in _CRITICAL_CSS.items()}
+    return f"""<script>
+(function () {{
+  const STORAGE_KEY = {_THEME_STORAGE_KEY!r};
+  const STYLE_ID = "xtb-theme-critical";
+  const CRITICAL = {{
+    dark: `{critical["dark"]}`,
+    light: `{critical["light"]}`,
+  }};
+  const SERVER = {server_theme!r};
+
+  function resolveTheme() {{
+    try {{
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored === "dark" || stored === "light") return stored;
+    }} catch (e) {{}}
+    return SERVER === "dark" ? "dark" : "light";
+  }}
+
+  function applyTheme(theme) {{
+    if (document.documentElement.getAttribute("data-xtb-theme") === theme
+        && document.getElementById(STYLE_ID)) {{
+      return;
+    }}
+    const css = CRITICAL[theme] || CRITICAL.light;
+    try {{ localStorage.setItem(STORAGE_KEY, theme); }} catch (e) {{}}
+    let el = document.getElementById(STYLE_ID);
+    if (!el) {{
+      el = document.createElement("style");
+      el.id = STYLE_ID;
+      document.head.appendChild(el);
+    }}
+    el.textContent = css;
+    document.documentElement.setAttribute("data-xtb-theme", theme);
+  }}
+
+  window.__xtbSetTheme = applyTheme;
+
+  applyTheme(resolveTheme());
+
+  if (!window.__xtbThemeObserverAttached) {{
+    window.__xtbThemeObserverAttached = true;
+    new MutationObserver(function () {{
+      applyTheme(resolveTheme());
+    }}).observe(document.documentElement, {{ childList: true, subtree: true }});
+  }}
+}})();
+</script>"""
+
+
+def inject_theme_preload() -> None:
+    """Wstrzykuje skrypt anty-flicker — czyta localStorage zanim wyrenderuje się treść."""
+    init_color_theme()
+    st.html(_theme_preload_html(get_color_theme()), unsafe_allow_javascript=True)
+
+
+def bootstrap_page() -> None:
+    """Wywołaj jako pierwszą instrukcję Streamlit na każdej podstronie (po set_page_config)."""
+    init_color_theme()
+    inject_theme_preload()
+    inject_global_css()
 
 
 def get_color_theme() -> str:
@@ -217,6 +324,7 @@ def inject_global_css() -> None:
     init_color_theme()
     css = _CSS_SHARED + (_CSS_DARK if is_dark_theme() else _CSS_LIGHT)
     st.markdown(css, unsafe_allow_html=True)
+    _sync_client_theme(get_color_theme())
 
 
 def render_theme_selector() -> None:

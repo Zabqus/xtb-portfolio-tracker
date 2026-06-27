@@ -25,7 +25,9 @@ from ui.position_charts import (
     build_timing_gauge,
 )
 from ui.sidebar import render_import_sidebar
+from ui.theme import bootstrap_page
 
+bootstrap_page()
 st.title("🔍 Analiza pozycji")
 
 if not render_import_sidebar():

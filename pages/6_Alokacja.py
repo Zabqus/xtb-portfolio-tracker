@@ -24,7 +24,9 @@ from ui.allocation_charts import (
 from ui.formatters import format_currency
 from ui.plotly_theme import style_figure
 from ui.sidebar import render_import_sidebar
+from ui.theme import bootstrap_page
 
+bootstrap_page()
 st.title("🌍 Alokacja portfela")
 
 st.caption(

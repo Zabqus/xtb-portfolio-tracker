@@ -33,7 +33,9 @@ from ui.returns_charts import (
     build_twr_index_chart,
 )
 from ui.sidebar import render_import_sidebar
+from ui.theme import bootstrap_page
 
+bootstrap_page()
 st.title("📈 Zwroty i wartość w czasie")
 st.caption(
     "Prawdziwa stopa zwrotu portfela (ważona czasem i przepływami), porównanie "
