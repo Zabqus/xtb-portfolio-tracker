@@ -17,6 +17,9 @@ env/
 # Lokalna watchlista użytkownika
 watchlist.json
 
+# Lokalne preferencje użytkownika (motyw itd.)
+user_preferences.json
+
 # Lokalne alerty cenowe użytkownika
 price_alerts.json
 
@@ -30,6 +33,9 @@ assets/fonts/DejaVuSans.ttf
 import_xtb.xlsx
 *_xtb*.xlsx
 *_import.xlsx
+
+# Lokalny skrót uruchomienia (Windows)
+uruchom.bat
 
 # System / edytor
 .DS_Store

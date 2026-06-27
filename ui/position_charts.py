@@ -6,6 +6,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from ui.plotly_theme import reference_line_color, style_figure
+
 
 def build_price_volume_chart(
     history: pd.DataFrame,
@@ -72,7 +74,7 @@ def build_price_volume_chart(
     )
     fig.update_yaxes(title_text="Cena", row=1, col=1)
     fig.update_yaxes(title_text="Vol.", row=2, col=1)
-    return fig
+    return style_figure(fig)
 
 
 def build_price_drawdown_chart(
@@ -136,7 +138,7 @@ def build_price_drawdown_chart(
         col=1,
     )
 
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
+    fig.add_hline(y=0, line_dash="dash", line_color=reference_line_color(), row=2, col=1)
 
     current_dd = float(drawdown_pct.iloc[-1])
     fig.update_yaxes(title_text="Cena", row=1, col=1)
@@ -146,7 +148,7 @@ def build_price_drawdown_chart(
         height=500,
         showlegend=False,
     )
-    return fig
+    return style_figure(fig)
 
 
 def build_benchmark_overlay_chart(
@@ -184,8 +186,8 @@ def build_benchmark_overlay_chart(
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02),
     )
-    fig.add_hline(y=100, line_dash="dash", line_color="gray", opacity=0.5)
-    return fig
+    fig.add_hline(y=100, line_dash="dash", line_color=reference_line_color(), opacity=0.5)
+    return style_figure(fig)
 
 
 def build_timing_gauge(percentile: float, label: str) -> go.Figure:
@@ -212,4 +214,4 @@ def build_timing_gauge(percentile: float, label: str) -> go.Figure:
         )
     )
     fig.update_layout(height=280, margin=dict(t=50, b=20))
-    return fig
+    return style_figure(fig)

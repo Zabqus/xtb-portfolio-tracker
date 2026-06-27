@@ -7,6 +7,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from ui.plotly_theme import reference_line_color, style_figure
+
 
 def build_portfolio_timeline_chart(
     timeline: pd.DataFrame,
@@ -63,7 +65,7 @@ def build_portfolio_timeline_chart(
     fig.update_xaxes(title_text="Data")
     fig.update_yaxes(title_text=f"Wartość ({currency})", secondary_y=False)
     fig.update_yaxes(title_text="Pozycje", secondary_y=True, showgrid=False)
-    return fig
+    return style_figure(fig)
 
 
 def build_cumulative_realized_pnl(closed: pd.DataFrame, currency: str) -> go.Figure:
@@ -71,7 +73,7 @@ def build_cumulative_realized_pnl(closed: pd.DataFrame, currency: str) -> go.Fig
     if closed is None or closed.empty or "close_time" not in closed.columns:
         fig = go.Figure()
         fig.update_layout(title="Brak danych zamkniętych pozycji")
-        return fig
+        return style_figure(fig)
 
     df = closed.dropna(subset=["close_time", "pnl"]).sort_values("close_time").copy()
     df["cumulative_pnl"] = df["pnl"].cumsum()
@@ -87,14 +89,14 @@ def build_cumulative_realized_pnl(closed: pd.DataFrame, currency: str) -> go.Fig
             fill="tozeroy",
         )
     )
-    fig.add_hline(y=0, line_dash="dash", line_color="gray")
+    fig.add_hline(y=0, line_dash="dash", line_color=reference_line_color())
     fig.update_layout(
         title=f"Skumulowany zrealizowany PnL ({currency})",
         xaxis_title="Data zamknięcia",
         yaxis_title=f"PnL ({currency})",
         height=380,
     )
-    return fig
+    return style_figure(fig)
 
 
 def build_contributions_vs_value_chart(
@@ -110,7 +112,7 @@ def build_contributions_vs_value_chart(
 
     if cash_ops is None or cash_ops.empty or "Type" not in cash_ops.columns:
         fig.update_layout(title="Brak danych Cash Operations do wykresu wpłat")
-        return fig
+        return style_figure(fig)
 
     cash_in = cash_ops[
         cash_ops["Type"].astype(str).str.contains(
@@ -120,7 +122,7 @@ def build_contributions_vs_value_chart(
 
     if cash_in.empty:
         fig.update_layout(title="Brak operacji wpłat (Cash in / Deposit) w eksporcie")
-        return fig
+        return style_figure(fig)
 
     cash_in["date"] = pd.to_datetime(cash_in.get("Time"), errors="coerce")
     cash_in = cash_in.dropna(subset=["date"]).sort_values("date")
@@ -168,7 +170,7 @@ def build_contributions_vs_value_chart(
     )
     fig.update_xaxes(title_text="Data")
     fig.update_yaxes(title_text=f"Wartość ({currency})")
-    return fig
+    return style_figure(fig)
 
 
 def build_dividends_per_year_chart(per_year: pd.DataFrame, currency: str) -> go.Figure:
@@ -176,7 +178,7 @@ def build_dividends_per_year_chart(per_year: pd.DataFrame, currency: str) -> go.
     if per_year is None or per_year.empty:
         fig = go.Figure()
         fig.update_layout(title="Brak danych o dywidendach")
-        return fig
+        return style_figure(fig)
 
     fig = px.bar(
         per_year,
@@ -188,7 +190,7 @@ def build_dividends_per_year_chart(per_year: pd.DataFrame, currency: str) -> go.
     fig.update_traces(marker_color="#9b59b6")
     fig.update_layout(height=360, xaxis_title="Rok", yaxis_title=f"Dywidendy ({currency})")
     fig.update_xaxes(type="category")
-    return fig
+    return style_figure(fig)
 
 
 def build_cumulative_dividends_chart(div: pd.DataFrame, currency: str) -> go.Figure:
@@ -196,7 +198,7 @@ def build_cumulative_dividends_chart(div: pd.DataFrame, currency: str) -> go.Fig
     if div is None or div.empty:
         fig = go.Figure()
         fig.update_layout(title="Brak danych o dywidendach")
-        return fig
+        return style_figure(fig)
 
     df = div.sort_values("date").copy()
     df["cumulative"] = df["amount"].cumsum()
@@ -219,4 +221,4 @@ def build_cumulative_dividends_chart(div: pd.DataFrame, currency: str) -> go.Fig
         yaxis_title=f"Dywidendy ({currency})",
         height=360,
     )
-    return fig
+    return style_figure(fig)

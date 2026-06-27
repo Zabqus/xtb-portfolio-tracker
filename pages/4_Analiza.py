@@ -9,6 +9,7 @@ from core.history import PERIOD_OPTIONS
 from core.session import get_analyzed_open, get_selected_ticker, set_selected_ticker
 from core.technicals import engine_name, fetch_technicals, latest_indicator_snapshot
 from ui.sidebar import render_import_sidebar
+from ui.theme import trend_color_css
 from ui.technical_charts import (
     build_bollinger_chart,
     build_macd_chart,
@@ -86,9 +87,9 @@ with st.expander("📊 Szybki przegląd — wszystkie pozycje", expanded=False):
             return ""
         low = val.lower()
         if "powyżej" in low or "bullish" in low or "↑" in val:
-            return "color: green"
+            return f"color: {trend_color_css('positive')}"
         if "poniżej" in low or "bearish" in low or "↓" in val:
-            return "color: red"
+            return f"color: {trend_color_css('negative')}"
         return ""
 
     display_snap = snap_df[

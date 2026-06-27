@@ -22,6 +22,7 @@ from core.watchlist import (
     load_watchlist_file,
     save_watchlist_file,
 )
+from ui.theme import init_color_theme
 
 SESSION_DEFAULTS = {
     "file_signature": None,
@@ -43,6 +44,7 @@ SESSION_DEFAULTS = {
 
 def init_session_state() -> None:
     """Inicjalizuje domyślne klucze session_state."""
+    init_color_theme()
     for key, default in SESSION_DEFAULTS.items():
         if key not in st.session_state:
             st.session_state[key] = default

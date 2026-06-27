@@ -6,6 +6,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from ui.plotly_theme import style_figure
+
 from core.technicals import (
     COL_BB_LOWER,
     COL_BB_MID,
@@ -108,7 +110,7 @@ def build_price_ma_rsi_chart(
     fig.update_yaxes(title_text="Cena", row=1, col=1)
     fig.update_yaxes(title_text="RSI", range=[0, 100], row=2, col=1)
     fig.update_xaxes(title_text="Data", row=2, col=1)
-    return fig
+    return style_figure(fig)
 
 
 def build_ma_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
@@ -145,7 +147,7 @@ def build_ma_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
         hovermode="x unified",
         legend=dict(orientation="h", y=1.08),
     )
-    return fig
+    return style_figure(fig)
 
 
 def build_rsi_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
@@ -173,7 +175,7 @@ def build_rsi_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
         height=320,
         hovermode="x unified",
     )
-    return fig
+    return style_figure(fig)
 
 
 def build_macd_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
@@ -207,7 +209,7 @@ def build_macd_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
         legend=dict(orientation="h", y=1.12),
         barmode="overlay",
     )
-    return fig
+    return style_figure(fig)
 
 
 def build_bollinger_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
@@ -262,4 +264,4 @@ def build_bollinger_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
         hovermode="x unified",
         legend=dict(orientation="h", y=1.08),
     )
-    return fig
+    return style_figure(fig)

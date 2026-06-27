@@ -11,11 +11,10 @@ from __future__ import annotations
 import streamlit as st
 
 from ui.sidebar import render_import_sidebar
-from ui.theme import inject_global_css
+from ui.theme import glossary_term_html, muted_text_color
 
 st.set_page_config(page_title="Słownik – XTB Tracker", page_icon="📖", layout="wide")
 
-inject_global_css()
 # Sidebar (upload + waluta) dla spójności; słownik działa bez raportu.
 render_import_sidebar()
 
@@ -227,21 +226,7 @@ CATEGORIES = list(dict.fromkeys(cat for cat, _, _ in TERMS))
 
 
 def _render_term(term: str, definition: str) -> None:
-    st.markdown(
-        f"""
-        <div style="
-            background:#FFFFFF;
-            border:1px solid #E2E8F0;
-            border-left:4px solid #2563EB;
-            border-radius:10px;
-            padding:12px 16px;
-            margin-bottom:10px;">
-            <div style="font-weight:700;font-size:1.02rem;color:#0F172A;">{term}</div>
-            <div style="color:#475569;font-size:0.92rem;margin-top:3px;">{definition}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(glossary_term_html(term, definition), unsafe_allow_html=True)
 
 
 query = st.text_input(
@@ -260,8 +245,10 @@ if query:
     if not matches:
         st.info("Brak dopasowań. Spróbuj innego słowa kluczowego.")
     for cat, term, definition in matches:
-        _render_term(f"{term}  ·  <span style='color:#94A3B8;font-weight:500'>{cat}</span>",
-                     definition)
+        _render_term(
+            f"{term}  ·  <span style='color:{muted_text_color()};font-weight:500'>{cat}</span>",
+            definition,
+        )
 else:
     st.caption(f"**{len(TERMS)}** pojęć w **{len(CATEGORIES)}** kategoriach.")
     tabs = st.tabs(CATEGORIES)

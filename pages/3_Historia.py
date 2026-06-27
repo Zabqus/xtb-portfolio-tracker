@@ -33,6 +33,7 @@ from ui.analytics_charts import (
 )
 from ui.charts import build_closed_pnl_chart
 from ui.formatters import format_currency, pnl_delta_color
+from ui.theme import metric_card_style
 from ui.history_charts import (
     build_contributions_vs_value_chart,
     build_cumulative_dividends_chart,
@@ -320,12 +321,7 @@ with tab_closed:
                 st.metric("Stratne", stats["losers"])
 
             try:
-                style_metric_cards(
-                    background_color="#1e1e2e",
-                    border_left_color="#4a9eff",
-                    border_color="#2d2d3f",
-                    box_shadow="rgba(0,0,0,0.2)",
-                )
+                style_metric_cards(**metric_card_style())
             except Exception:
                 pass
 

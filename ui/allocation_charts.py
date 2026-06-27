@@ -6,6 +6,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from ui.plotly_theme import style_figure
+
 REGION_COLORS = {
     "USA": "#3498db",
     "EU": "#2ecc71",
@@ -25,7 +27,7 @@ def build_breakdown_pie(
     if breakdown.empty:
         fig = go.Figure()
         fig.update_layout(title=title, height=440)
-        return fig
+        return style_figure(fig)
 
     chart = breakdown.copy()
     chart["label"] = chart[label_col].astype(str)
@@ -47,7 +49,7 @@ def build_breakdown_pie(
         customdata=[currency] * len(chart),
     )
     fig.update_layout(showlegend=True, height=440, margin=dict(t=50, b=20))
-    return fig
+    return style_figure(fig)
 
 
 def build_breakdown_bar(
@@ -61,7 +63,7 @@ def build_breakdown_bar(
     if breakdown.empty:
         fig = go.Figure()
         fig.update_layout(title=title, height=400)
-        return fig
+        return style_figure(fig)
 
     chart = breakdown.sort_values("weight_pct", ascending=True)
     colors = [
@@ -87,7 +89,7 @@ def build_breakdown_bar(
         yaxis_title="",
         height=max(320, 40 * len(chart)),
     )
-    return fig
+    return style_figure(fig)
 
 
 def build_rebalance_chart(rebalance: pd.DataFrame, group_col: str) -> go.Figure:
@@ -95,7 +97,7 @@ def build_rebalance_chart(rebalance: pd.DataFrame, group_col: str) -> go.Figure:
     fig = go.Figure()
     if rebalance is None or rebalance.empty:
         fig.update_layout(title="Brak danych do rebalansu", height=360)
-        return fig
+        return style_figure(fig)
 
     chart = rebalance.copy()
     labels = chart[group_col].astype(str)
@@ -121,4 +123,4 @@ def build_rebalance_chart(rebalance: pd.DataFrame, group_col: str) -> go.Figure:
         legend=dict(orientation="h", yanchor="bottom", y=1.02),
         margin=dict(t=56),
     )
-    return fig
+    return style_figure(fig)

@@ -5,6 +5,8 @@ from __future__ import annotations
 import pandas as pd
 import plotly.graph_objects as go
 
+from ui.plotly_theme import reference_line_color, style_figure
+
 
 def build_vs_portfolio_bar(
     table: pd.DataFrame,
@@ -17,7 +19,7 @@ def build_vs_portfolio_bar(
     if chart.empty:
         fig = go.Figure()
         fig.update_layout(title="Brak danych zwrotu", height=400)
-        return fig
+        return style_figure(fig)
 
     colors = [
         "#3498db" if not row.get("in_portfolio") else "#95a5a6"
@@ -46,7 +48,7 @@ def build_vs_portfolio_bar(
             annotation_position="top right",
             annotation_font_color="#e67e22",
         )
-    fig.add_hline(y=0, line_dash="dot", line_color="gray")
+    fig.add_hline(y=0, line_dash="dot", line_color=reference_line_color())
     fig.update_layout(
         title=f"Zwrot {period_label} — watchlist vs portfel",
         xaxis_title="Symbol",
@@ -54,7 +56,7 @@ def build_vs_portfolio_bar(
         height=450,
         showlegend=False,
     )
-    return fig
+    return style_figure(fig)
 
 
 def build_normalized_lines_chart(
@@ -65,7 +67,7 @@ def build_normalized_lines_chart(
     fig = go.Figure()
     if comparison.empty or "date" not in comparison.columns:
         fig.update_layout(title="Brak wspólnych sesji do porównania", height=420)
-        return fig
+        return style_figure(fig)
 
     palette = {
         "portfel (śr.)": "#e67e22",
@@ -91,5 +93,5 @@ def build_normalized_lines_chart(
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02),
     )
-    fig.add_hline(y=100, line_dash="dot", line_color="gray", opacity=0.5)
-    return fig
+    fig.add_hline(y=100, line_dash="dot", line_color=reference_line_color(), opacity=0.5)
+    return style_figure(fig)

@@ -5,6 +5,8 @@ from __future__ import annotations
 import pandas as pd
 import plotly.graph_objects as go
 
+from ui.plotly_theme import reference_line_color, style_figure
+
 ACCENT = "#2563EB"
 PROFIT = "#16A34A"
 BENCH = "#F59E0B"
@@ -15,7 +17,7 @@ def build_twr_index_chart(twr_index: pd.DataFrame) -> go.Figure:
     fig = go.Figure()
     if twr_index is None or twr_index.empty:
         fig.update_layout(title="Brak danych do krzywej TWR")
-        return fig
+        return style_figure(fig)
 
     df = twr_index.dropna(subset=["date", "twr_index"]).copy()
     fig.add_trace(
@@ -29,7 +31,7 @@ def build_twr_index_chart(twr_index: pd.DataFrame) -> go.Figure:
             fillcolor="rgba(37, 99, 235, 0.08)",
         )
     )
-    fig.add_hline(y=100, line_dash="dash", line_color="gray")
+    fig.add_hline(y=100, line_dash="dash", line_color=reference_line_color())
     fig.update_layout(
         title="Krzywa wzrostu portfela (TWR, start = 100)",
         height=380,
@@ -38,7 +40,7 @@ def build_twr_index_chart(twr_index: pd.DataFrame) -> go.Figure:
     )
     fig.update_xaxes(title_text="Data")
     fig.update_yaxes(title_text="Indeks (100 = start)")
-    return fig
+    return style_figure(fig)
 
 
 def build_portfolio_vs_benchmark_chart(
@@ -49,7 +51,7 @@ def build_portfolio_vs_benchmark_chart(
     fig = go.Figure()
     if merged is None or merged.empty:
         fig.update_layout(title="Brak danych do porównania z benchmarkiem")
-        return fig
+        return style_figure(fig)
 
     fig.add_trace(
         go.Scatter(
@@ -70,7 +72,7 @@ def build_portfolio_vs_benchmark_chart(
                 line=dict(color=BENCH, width=2, dash="dot"),
             )
         )
-    fig.add_hline(y=100, line_dash="dash", line_color="gray")
+    fig.add_hline(y=100, line_dash="dash", line_color=reference_line_color())
     fig.update_layout(
         title=f"Portfel vs {benchmark_name} (100 = start, oba znormalizowane)",
         height=430,
@@ -80,7 +82,7 @@ def build_portfolio_vs_benchmark_chart(
     )
     fig.update_xaxes(title_text="Data")
     fig.update_yaxes(title_text="Indeks (100 = start)")
-    return fig
+    return style_figure(fig)
 
 
 def build_snapshots_chart(snapshots: pd.DataFrame, currency: str) -> go.Figure:
@@ -88,7 +90,7 @@ def build_snapshots_chart(snapshots: pd.DataFrame, currency: str) -> go.Figure:
     fig = go.Figure()
     if snapshots is None or snapshots.empty:
         fig.update_layout(title="Brak zapisanych snapshotów")
-        return fig
+        return style_figure(fig)
 
     df = snapshots.sort_values("date").copy()
     fig.add_trace(
@@ -121,4 +123,4 @@ def build_snapshots_chart(snapshots: pd.DataFrame, currency: str) -> go.Figure:
     )
     fig.update_xaxes(title_text="Data snapshotu")
     fig.update_yaxes(title_text=f"Wartość ({currency})")
-    return fig
+    return style_figure(fig)

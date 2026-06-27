@@ -22,6 +22,7 @@ from ui.allocation_charts import (
     build_rebalance_chart,
 )
 from ui.formatters import format_currency
+from ui.plotly_theme import style_figure
 from ui.sidebar import render_import_sidebar
 
 st.title("🌍 Alokacja portfela")
@@ -260,7 +261,7 @@ else:
             color_discrete_map={"USD": "#2196F3", "EUR": "#4CAF50", "PLN": "#FF9800"},
         )
         fig_ce.update_traces(textinfo="percent+label")
-        st.plotly_chart(fig_ce, use_container_width=True)
+        st.plotly_chart(style_figure(fig_ce), use_container_width=True)
     with ce_col2:
         st.dataframe(
             currency_exp.rename(
@@ -319,7 +320,7 @@ else:
                 xaxis_title="Konto", yaxis_title=f"Wartość ({currency})",
                 legend_title="Waluta instr.",
             )
-            st.plotly_chart(fig_acc, use_container_width=True)
+            st.plotly_chart(style_figure(fig_acc), use_container_width=True)
 
 st.divider()
 st.subheader("Szczegóły per pozycja")

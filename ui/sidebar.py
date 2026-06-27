@@ -13,7 +13,7 @@ from core.session import (
     process_uploads,
     set_display_currency,
 )
-from ui.theme import inject_global_css
+from ui.theme import inject_global_css, render_theme_selector
 
 
 def render_import_sidebar() -> bool:
@@ -26,6 +26,8 @@ def render_import_sidebar() -> bool:
     init_session_state()
 
     with st.sidebar:
+        render_theme_selector()
+        st.divider()
         st.header("Import z XTB")
         multi = st.checkbox(
             "Multi-account (np. PLN + EUR)",

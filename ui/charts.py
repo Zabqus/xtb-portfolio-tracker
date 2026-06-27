@@ -6,6 +6,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from ui.plotly_theme import reference_line_color, style_figure
+
 
 def build_allocation_pie(df: pd.DataFrame, currency: str) -> go.Figure:
     """Wykres kołowy – udział procentowy pozycji w wartości portfela."""
@@ -21,7 +23,7 @@ def build_allocation_pie(df: pd.DataFrame, currency: str) -> go.Figure:
     )
     fig.update_traces(textposition="inside", textinfo="percent+label")
     fig.update_layout(showlegend=True, height=450)
-    return fig
+    return style_figure(fig)
 
 
 def build_portfolio_treemap(df: pd.DataFrame, currency: str) -> go.Figure:
@@ -58,7 +60,7 @@ def build_portfolio_treemap(df: pd.DataFrame, currency: str) -> go.Figure:
         margin=dict(t=40, l=0, r=0, b=0),
         coloraxis_colorbar=dict(title="ROI %"),
     )
-    return fig
+    return style_figure(fig)
 
 
 def build_pnl_bar_chart(df: pd.DataFrame, currency: str) -> go.Figure:
@@ -84,8 +86,8 @@ def build_pnl_bar_chart(df: pd.DataFrame, currency: str) -> go.Figure:
         yaxis_title=f"Zysk / strata ({currency})",
         height=450,
     )
-    fig.add_hline(y=0, line_dash="dash", line_color="gray")
-    return fig
+    fig.add_hline(y=0, line_dash="dash", line_color=reference_line_color())
+    return style_figure(fig)
 
 
 def build_closed_pnl_chart(closed: pd.DataFrame, currency: str) -> go.Figure:
@@ -110,5 +112,5 @@ def build_closed_pnl_chart(closed: pd.DataFrame, currency: str) -> go.Figure:
         yaxis_title=f"Profit/Loss ({currency})",
         height=450,
     )
-    fig.add_hline(y=0, line_dash="dash", line_color="gray")
-    return fig
+    fig.add_hline(y=0, line_dash="dash", line_color=reference_line_color())
+    return style_figure(fig)
