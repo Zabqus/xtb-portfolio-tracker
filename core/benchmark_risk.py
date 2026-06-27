@@ -23,6 +23,7 @@ class BenchmarkRiskSummary:
     has_data: bool
 
 
+def compute_benchmark_risk_series(
     twr_index: pd.DataFrame,
     benchmark_name: str,
     window: int = ROLLING_BETA_WINDOW,

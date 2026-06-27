@@ -49,6 +49,7 @@ def main() -> int:
         "core.concentration",
         "core.pnl_breakdown",
         "core.benchmark_risk",
+        "core.performance_analytics",
         "core.position_risk",
         "core.preferences",
         "ui.charts",

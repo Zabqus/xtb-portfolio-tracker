@@ -4,6 +4,7 @@ oraz lokalne snapshoty wartości portfela w czasie.
 """
 
 import streamlit as st
+import pandas as pd
 
 from core.analyzer import analyze_portfolio, portfolio_summary
 from core.portfolio_benchmark import (
@@ -13,6 +14,15 @@ from core.portfolio_benchmark import (
     relative_performance,
 )
 from core.benchmark_risk import compute_benchmark_risk_series, summarize_benchmark_risk
+from core.performance_analytics import (
+    MULTI_BENCHMARK_NAMES,
+    build_portfolio_vs_multi_benchmark,
+    compute_calendar_returns,
+    compute_return_attribution,
+    compute_rolling_returns_heatmap,
+    compute_whatif_scenario,
+    run_monte_carlo,
+)
 from core.returns import MIN_ANNUALIZE_DAYS, compute_mwr, compute_twr
 from core.session import (
     get_analyzed_open,
@@ -30,7 +40,12 @@ from core.snapshots import (
 from ui.formatters import format_currency, pnl_delta_color
 from ui.returns_charts import (
     build_benchmark_risk_chart,
+    build_calendar_returns_heatmap,
+    build_monte_carlo_fan_chart,
+    build_multi_benchmark_chart,
     build_portfolio_vs_benchmark_chart,
+    build_return_attribution_chart,
+    build_rolling_returns_heatmap,
     build_snapshots_chart,
     build_twr_index_chart,
     build_twr_with_drawdown_chart,
@@ -55,8 +70,14 @@ if report is None:
 
 display_currency = get_display_currency()
 
-tab_returns, tab_benchmark, tab_snapshots = st.tabs(
-    ["📊 Stopa zwrotu (MWR / TWR)", "🏁 Portfel vs benchmark", "📌 Snapshoty"]
+tab_returns, tab_benchmark, tab_attribution, tab_snapshots, tab_scenarios = st.tabs(
+    [
+        "📊 Stopa zwrotu (MWR / TWR)",
+        "🏁 Portfel vs benchmark",
+        "🎯 Atrybucja i rolling",
+        "📌 Snapshoty",
+        "🔮 Scenariusze",
+    ]
 )
 
 # ───────────────────────── MWR / TWR ─────────────────────────
@@ -172,6 +193,20 @@ with tab_returns:
                 "equity curve + underwater chart."
             )
 
+            st.markdown("##### Kalendarz dziennych zwrotów")
+            calendar_df = compute_calendar_returns(twr.index)
+            if calendar_df.empty:
+                st.caption("Za mało danych do kalendarza zwrotów.")
+            else:
+                st.plotly_chart(
+                    build_calendar_returns_heatmap(calendar_df),
+                    use_container_width=True,
+                )
+                st.caption(
+                    "Kolor = dzienny zwrot TWR (zielony zysk, czerwony spadek). "
+                    "Intuicyjny podgląd jak GitHub contributions — dobry do PDF."
+                )
+
         with st.expander("ℹ️ MWR vs TWR — czym się różnią?"):
             st.markdown(
                 """
@@ -286,6 +321,228 @@ with tab_benchmark:
                         "Beta i tracking error wymagają co najmniej ~1 roku wspólnych danych "
                         "portfela i benchmarku."
                     )
+
+            st.divider()
+            st.markdown("##### Porównanie wielu benchmarków naraz")
+            st.caption(
+                "Jedna linia portfela + cienkie linie indeksów — SPY/S&P 500, QQQ/NASDAQ, "
+                "MSCI World, WIG20."
+            )
+            with st.spinner("Pobieranie wielu benchmarków…"):
+                multi = build_portfolio_vs_multi_benchmark(
+                    twr.index, list(MULTI_BENCHMARK_NAMES)
+                )
+            if multi.empty:
+                st.info("Brak danych do wykresu multi-benchmark.")
+            else:
+                st.plotly_chart(
+                    build_multi_benchmark_chart(multi, list(MULTI_BENCHMARK_NAMES)),
+                    use_container_width=True,
+                )
+
+# ───────────────────────── Atrybucja i rolling ─────────────────────────
+with tab_attribution:
+    st.subheader("Atrybucja zwrotu i rolling returns")
+    st.caption(
+        "Ile poszczególne pozycje / sektory / regiony wniosły do TWR w wybranym okresie "
+        "oraz heatmapa rolling returns."
+    )
+
+    if report.cash_operations is None:
+        st.warning("Wymagany natywny eksport Excel z arkuszem Cash Operations.")
+    else:
+        with st.spinner("Liczenie TWR i atrybucji…"):
+            timeline = get_portfolio_timeline()
+            twr = compute_twr(timeline, report.cash_operations)
+            analyzed = get_analyzed_open()
+
+        if not twr.has_data or twr.index.empty:
+            st.info("Za mało danych timeline, aby policzyć atrybucję.")
+        else:
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                group_by = st.selectbox(
+                    "Grupuj wg",
+                    ["position", "sector", "region"],
+                    format_func=lambda x: {"position": "Pozycja", "sector": "Sektor", "region": "Region"}[x],
+                    key="attr_group_by",
+                )
+            with c2:
+                period = st.selectbox(
+                    "Okres",
+                    ["Cały okres", "YTD", "1 rok", "6 miesięcy", "3 miesiące"],
+                    key="attr_period",
+                )
+            with c3:
+                freq = st.selectbox(
+                    "Rolling — wiersze",
+                    ["month", "quarter"],
+                    format_func=lambda x: "Miesiące" if x == "month" else "Kwartały",
+                    key="rolling_freq",
+                )
+
+            with st.spinner("Liczenie atrybucji zwrotu…"):
+                attribution = compute_return_attribution(
+                    report.cash_operations,
+                    twr.index,
+                    group_by=group_by,
+                    period=period,
+                    analyzed=analyzed,
+                )
+
+            if attribution.empty:
+                st.info("Za mało danych do atrybucji w wybranym okresie.")
+            else:
+                group_label = {"position": "pozycje", "sector": "sektory", "region": "regiony"}[group_by]
+                st.plotly_chart(
+                    build_return_attribution_chart(attribution, f"{period}, {group_label}"),
+                    use_container_width=True,
+                )
+                st.caption(
+                    "Wkład w pp — suma dziennych wag × zwrotów pozycji (link effect). "
+                    "Pokazuje, które obszary portfela napędzały lub hamowały TWR."
+                )
+
+            st.divider()
+            st.markdown("##### Rolling returns — heatmapa")
+            heatmap_df = compute_rolling_returns_heatmap(twr.index, freq=freq)
+            if heatmap_df.empty:
+                st.info("Za mało danych do heatmapy rolling returns.")
+            else:
+                st.plotly_chart(
+                    build_rolling_returns_heatmap(heatmap_df),
+                    use_container_width=True,
+                )
+                st.caption(
+                    "Szybka odpowiedź: czy ostatnie 3 miesiące odstają od długiego trendu? "
+                    "Porównaj wiersze (okresy) z kolumną 3M vs 1Y."
+                )
+
+# ───────────────────────── Scenariusze ─────────────────────────
+with tab_scenarios:
+    st.subheader("Scenariusze „co jeśli”")
+    st.caption("Prosty stress test i symulacja Monte Carlo na historycznych zwrotach TWR.")
+
+    analyzed = get_analyzed_open()
+    twr = None
+    if report.cash_operations is not None:
+        with st.spinner("Liczenie TWR…"):
+            timeline = get_portfolio_timeline()
+            twr = compute_twr(timeline, report.cash_operations)
+
+    st.markdown("#### Stress test — spadek top pozycji")
+    if analyzed is None or analyzed.empty:
+        st.info("Brak otwartych pozycji do symulacji.")
+    else:
+        s1, s2 = st.columns(2)
+        with s1:
+            top_n = st.slider("Top N pozycji", min_value=1, max_value=10, value=3, key="whatif_top_n")
+        with s2:
+            shock_pct = st.slider(
+                "Spadek cen (%)",
+                min_value=-50,
+                max_value=0,
+                value=-10,
+                step=1,
+                key="whatif_shock",
+            )
+
+        whatif = compute_whatif_scenario(
+            analyzed,
+            top_n=top_n,
+            shock_pct=shock_pct,
+            twr_index=twr.index if twr and twr.has_data else None,
+        )
+
+        if whatif.has_data:
+            w1, w2, w3, w4 = st.columns(4)
+            with w1:
+                st.metric(
+                    "Wartość dziś",
+                    format_currency(whatif.current_value, display_currency),
+                )
+            with w2:
+                st.metric(
+                    "Po scenariuszu",
+                    format_currency(whatif.shocked_value, display_currency),
+                    delta=f"{whatif.change_pct:+.1f}%",
+                    delta_color=pnl_delta_color(whatif.change_pct),
+                )
+            with w3:
+                st.metric("Drawdown dziś", f"{whatif.current_drawdown_pct:.1f}%")
+            with w4:
+                st.metric(
+                    "Drawdown po scenariuszu",
+                    f"{whatif.shocked_drawdown_pct:.1f}%",
+                    delta=f"{whatif.shocked_drawdown_pct - whatif.current_drawdown_pct:+.1f} pp",
+                    delta_color=pnl_delta_color(
+                        whatif.shocked_drawdown_pct - whatif.current_drawdown_pct
+                    ),
+                )
+
+            if whatif.shocked_positions:
+                shock_df = pd.DataFrame(whatif.shocked_positions)
+                shock_df["old_value"] = shock_df["old_value"].round(2)
+                shock_df["new_value"] = shock_df["new_value"].round(2)
+                shock_df["weight_pct"] = shock_df["weight_pct"].round(1)
+                st.dataframe(
+                    shock_df.rename(
+                        columns={
+                            "ticker": "Ticker",
+                            "old_value": f"Wartość ({display_currency})",
+                            "new_value": f"Po scenariuszu ({display_currency})",
+                            "weight_pct": "Waga %",
+                        }
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+    st.divider()
+    st.markdown("#### Monte Carlo (bootstrap historycznych zwrotów)")
+
+    if twr is None or not twr.has_data or twr.index.empty:
+        st.info("Monte Carlo wymaga timeline z Cash Operations (min. ~30 dni TWR).")
+    else:
+        mc1, mc2 = st.columns(2)
+        with mc1:
+            horizon_years = st.selectbox(
+                "Horyzont",
+                [1, 3, 5],
+                format_func=lambda x: f"{x} {'rok' if x == 1 else 'lata'}",
+                index=1,
+                key="mc_horizon",
+            )
+        with mc2:
+            n_sims = st.selectbox("Symulacje", [200, 500, 1000], index=1, key="mc_sims")
+
+        with st.spinner("Symulacja Monte Carlo…"):
+            mc = run_monte_carlo(
+                twr.index,
+                horizon_years=float(horizon_years),
+                n_simulations=n_sims,
+            )
+
+        if not mc.has_data:
+            st.info("Za mało historycznych zwrotów do symulacji (min. ~30 dni).")
+        else:
+            st.plotly_chart(
+                build_monte_carlo_fan_chart(mc.paths, float(horizon_years)),
+                use_container_width=True,
+            )
+            last = mc.paths.iloc[-1]
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                st.metric("P10 (pesymistyczny)", f"{last['p10']:.0f}")
+            with m2:
+                st.metric("Mediana P50", f"{last['p50']:.0f}")
+            with m3:
+                st.metric("P90 (optymistyczny)", f"{last['p90']:.0f}")
+            st.caption(
+                f"Rozkład wartości portfela za {horizon_years} lat "
+                f"({mc.n_simulations} symulacji, bootstrap dziennych zwrotów TWR). "
+                "Indeks start = 100. To uproszczenie — bez pełnej macierzy korelacji pozycji."
+            )
 
 # ───────────────────────── Snapshoty ─────────────────────────
 with tab_snapshots:
