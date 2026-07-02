@@ -5,7 +5,8 @@ Uruchomienie: streamlit run main.py
 
 import streamlit as st
 
-from core.session import get_report, init_session_state
+from core.session import get_analyzed_open, get_display_currency, get_portfolio_timeline, get_report, init_session_state
+from ui.kpi_dashboard import render_kpi_wall
 from ui.sidebar import render_import_sidebar
 from ui.theme import bootstrap_page
 
@@ -31,6 +32,7 @@ if report is None:
         """
         ### Podstrony
 
+        - **Strona główna** – dashboard KPI (TWR, MWR, Sharpe, alerty) ze sparkline'ami
         - **Portfolio** – otwarte pozycje, wykresy, metryki PnL
         - **Pozycja** – wykres 1Y/3Y/5Y, fundamenty, benchmark, timing wejścia
         - **Historia** – timeline, trade analytics, cost basis, zamknięte pozycje
@@ -69,6 +71,25 @@ m2.metric("Waluta konta", report.account_currency)
 m3.metric("Otwarte pozycje", len(report.open_positions))
 m4.metric("Zamknięte pozycje", closed_n)
 
+st.divider()
+
+with st.spinner("Ładowanie metryk analitycznych…"):
+    analyzed = get_analyzed_open()
+    timeline = get_portfolio_timeline()
+    currency = get_display_currency()
+
+if analyzed is not None and not analyzed.empty:
+    render_kpi_wall(
+        report,
+        analyzed,
+        timeline,
+        currency,
+        title="📊 Dashboard analityczny",
+    )
+else:
+    st.caption("Dashboard KPI pojawi się po poprawnej analizie otwartych pozycji.")
+
+st.divider()
 st.caption(
     "Przejdź do **Portfolio**, **Pozycja**, **Historia**, **Analiza**, **Watchlist**, "
     "**Alokacja**, **Zwroty** lub **Słownik** w menu po lewej."

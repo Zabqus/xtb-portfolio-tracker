@@ -7,6 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from ui.plotly_theme import reference_line_color, style_figure
+from ui.theme import loss_color, profit_color
 
 
 def build_allocation_pie(df: pd.DataFrame, currency: str) -> go.Figure:
@@ -67,7 +68,7 @@ def build_pnl_bar_chart(df: pd.DataFrame, currency: str) -> go.Figure:
     """Wykres słupkowy – zysk/strata na poszczególnych aktywach."""
     chart_df = df.dropna(subset=["pnl"]).copy()
     label_col = "ticker_xtb" if "ticker_xtb" in chart_df.columns else "ticker_yahoo"
-    colors = ["#2ecc71" if v >= 0 else "#e74c3c" for v in chart_df["pnl"]]
+    colors = [profit_color() if v >= 0 else loss_color() for v in chart_df["pnl"]]
 
     fig = go.Figure(
         data=[
@@ -93,7 +94,7 @@ def build_pnl_bar_chart(df: pd.DataFrame, currency: str) -> go.Figure:
 def build_closed_pnl_chart(closed: pd.DataFrame, currency: str) -> go.Figure:
     """Wykres słupkowy PnL zamkniętych pozycji."""
     chart_df = closed.dropna(subset=["pnl", "ticker_xtb"]).copy()
-    colors = ["#2ecc71" if v >= 0 else "#e74c3c" for v in chart_df["pnl"]]
+    colors = [profit_color() if v >= 0 else loss_color() for v in chart_df["pnl"]]
 
     fig = go.Figure(
         data=[

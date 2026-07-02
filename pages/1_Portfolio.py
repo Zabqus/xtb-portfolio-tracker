@@ -29,8 +29,10 @@ from core.session import (
     get_report,
     set_selected_ticker,
 )
+from ui.chart_navigation import render_navigable_chart
 from ui.charts import build_allocation_pie, build_pnl_bar_chart, build_portfolio_treemap
 from ui.formatters import format_currency, pnl_delta_color
+from ui.portfolio_filters import apply_portfolio_filters, render_portfolio_filters
 from ui.pnl_charts import build_pnl_waterfall_chart
 from ui.risk_charts import (
     build_concentration_chart,
@@ -129,6 +131,14 @@ if missing > 0:
     tickers = analyzed.loc[analyzed["market_price"].isna(), "ticker_yahoo"].tolist()
     st.warning(f"Brak ceny Yahoo dla: {', '.join(tickers)}. Sprawdź core/importer_maps.py.")
 
+st.subheader("Filtry globalne")
+st.caption("Filtry dotyczą wykresów i tabeli poniżej — istniejące sekcje analityczne pozostają bez zmian.")
+portfolio_filters = render_portfolio_filters(analyzed, key_prefix="portfolio")
+filtered = apply_portfolio_filters(analyzed, portfolio_filters)
+
+if filtered.empty:
+    st.warning("Brak pozycji spełniających wybrane filtry — zmień kryteria powyżej.")
+
 st.subheader("Wizualizacje")
 chart_view = st.radio(
     "Widok portfela",
@@ -137,18 +147,36 @@ chart_view = st.radio(
     key="portfolio_chart_view",
 )
 
+chart_df = filtered if not filtered.empty else analyzed
+label_col = "ticker_xtb" if "ticker_xtb" in chart_df.columns else "ticker_yahoo"
+chart_tickers = chart_df[label_col].tolist() if label_col in chart_df.columns else None
+
 if chart_view == "Mapa (Treemap)":
-    st.plotly_chart(build_portfolio_treemap(analyzed, currency), use_container_width=True)
+    render_navigable_chart(
+        build_portfolio_treemap(chart_df, currency),
+        "portfolio_treemap",
+        tickers=chart_tickers,
+    )
     st.caption(
         "Rozmiar kafla = wartość rynkowa pozycji. "
-        "Kolor: zielony = zysk, czerwony = strata (skala ROI%)."
+        "Kolor: zielony = zysk, czerwony = strata (skala ROI%). "
+        "**Kliknij ticker**, aby przejść do analizy pozycji."
     )
 else:
     c1, c2 = st.columns(2)
     with c1:
-        st.plotly_chart(build_allocation_pie(analyzed, currency), use_container_width=True)
+        render_navigable_chart(
+            build_allocation_pie(chart_df, currency),
+            "portfolio_pie",
+            tickers=chart_tickers,
+        )
     with c2:
-        st.plotly_chart(build_pnl_bar_chart(analyzed, currency), use_container_width=True)
+        render_navigable_chart(
+            build_pnl_bar_chart(chart_df, currency),
+            "portfolio_pnl_bar",
+            tickers=chart_tickers,
+        )
+    st.caption("**Kliknij ticker na wykresie**, aby przejść do strony Pozycja.")
 
 st.subheader("Portfolio i ryzyko")
 st.caption("Nowe wizualizacje analityczne — istniejące wykresy powyżej pozostają bez zmian.")
@@ -380,37 +408,13 @@ if export_sig:
 
 st.subheader("Otwarte pozycje")
 
-# Filtry
-f1, f2, f3 = st.columns(3)
-with f1:
-    show_filter = st.radio(
-        "Pokaż",
-        ["Wszystkie", "Tylko zyski", "Tylko straty"],
-        horizontal=True,
-        key="positions_filter_pnl",
-    )
-with f2:
-    if "account_label" in analyzed.columns and analyzed["account_label"].nunique() > 1:
-        accounts = ["Wszystkie"] + sorted(analyzed["account_label"].dropna().unique().tolist())
-        acc_filter = st.selectbox("Konto", accounts, key="positions_filter_account")
-    else:
-        acc_filter = "Wszystkie"
-with f3:
-    sort_by = st.selectbox(
-        "Sortuj po",
-        ["ROI % (malejąco)", "ROI % (rosnąco)", "Wartość (malejąco)", "PnL (malejąco)"],
-        key="positions_sort",
-    )
+sort_by = st.selectbox(
+    "Sortuj tabelę po",
+    ["ROI % (malejąco)", "ROI % (rosnąco)", "Wartość (malejąco)", "PnL (malejąco)"],
+    key="positions_sort",
+)
 
-# Zastosuj filtry
-filtered = analyzed.copy()
-if show_filter == "Tylko zyski":
-    filtered = filtered[filtered["roi_pct"] > 0]
-elif show_filter == "Tylko straty":
-    filtered = filtered[filtered["roi_pct"] < 0]
-if acc_filter != "Wszystkie":
-    filtered = filtered[filtered["account_label"] == acc_filter]
-
+table_df = filtered.copy() if not filtered.empty else analyzed.copy()
 sort_map = {
     "ROI % (malejąco)": ("roi_pct", False),
     "ROI % (rosnąco)": ("roi_pct", True),
@@ -418,13 +422,19 @@ sort_map = {
     "PnL (malejąco)": ("pnl", False),
 }
 sort_col, asc = sort_map[sort_by]
-if sort_col in filtered.columns:
-    filtered = filtered.sort_values(sort_col, ascending=asc)
+if sort_col in table_df.columns:
+    table_df = table_df.sort_values(sort_col, ascending=asc)
 
-if filtered.empty:
-    st.info("Brak pozycji spełniających wybrane filtry.")
-else:
-    render_open_positions_table(filtered, currency)
+with st.expander("📋 Tabela pozycji — szczegóły", expanded=False):
+    if table_df.empty:
+        st.info("Brak pozycji spełniających wybrane filtry.")
+    else:
+        table_total = float(portfolio_summary(table_df)["total_value"])
+        render_open_positions_table(table_df, currency, total_value=table_total, show_52w=True)
+        st.caption(
+            "Kolumna **52W Low → High** pokazuje, gdzie jest aktualna cena w rocznym zakresie. "
+            "Przy P&L widzisz też udział zysku/straty w całym portfelu."
+        )
 
 st.divider()
 st.subheader("Analiza pojedynczej pozycji")

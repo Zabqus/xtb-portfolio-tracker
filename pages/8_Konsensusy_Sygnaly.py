@@ -7,6 +7,7 @@ import streamlit as st
 
 from core.analyst_consensus import fetch_analyst_consensus, format_recommendation
 from core.fundamentals import fetch_fundamentals
+from core.range_52w import range_position_52w
 from core.session import get_analyzed_open, get_display_currency, get_report
 from core.signals import (
     SIGNAL_BUY,
@@ -60,12 +61,7 @@ def _upside(target: float | None, price: float | None) -> float | None:
     return (target - price) / price * 100
 
 
-def _range_position(price: float | None, low: float | None, high: float | None) -> float | None:
-    if price is None or low is None or high is None or pd.isna(price):
-        return None
-    if high <= low:
-        return None
-    return max(0.0, min(1.0, (price - low) / (high - low)))
+_range_position = range_position_52w
 
 
 tab_consensus, tab_signals = st.tabs(

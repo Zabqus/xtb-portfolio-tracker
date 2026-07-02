@@ -4,9 +4,11 @@ Podstrona: głęboka analiza pojedynczej pozycji (wykres, fundamenty, benchmark,
 
 import streamlit as st
 
+from core.analyzer import portfolio_summary
 from core.benchmark import build_performance_comparison, resolve_benchmark
 from core.analyst_consensus import fetch_analyst_consensus
 from core.fundamentals import fetch_fundamentals, format_market_cap
+from core.range_52w import range_position_52w
 from ui.analyst_consensus import render_analyst_consensus
 from core.history import PERIOD_OPTIONS, fetch_price_history
 from core.timing_score import compute_timing_score
@@ -76,6 +78,16 @@ quantity = float(row["quantity"])
 currency = row["currency"]
 pnl = row.get("pnl")
 roi = row.get("roi_pct")
+market_value = row.get("market_value")
+
+portfolio_total = float(portfolio_summary(analyzed)["total_value"])
+pnl_portfolio_pct = None
+weight_pct = None
+if portfolio_total > 0:
+    if pnl is not None and pnl == pnl:
+        pnl_portfolio_pct = float(pnl) / portfolio_total * 100.0
+    if market_value is not None and market_value == market_value:
+        weight_pct = float(market_value) / portfolio_total * 100.0
 
 st.caption(f"Yahoo: **{yahoo}** · Waluta notowań: **{currency}**")
 
@@ -87,15 +99,21 @@ with m2:
     st.metric("Śr. cena zakupu", f"{avg_price:,.4f} {currency}")
 with m3:
     if pnl is not None and not (isinstance(pnl, float) and pnl != pnl):
+        pnl_label = format_currency(float(pnl), get_display_currency())
+        if pnl_portfolio_pct is not None:
+            pnl_label = f"{pnl_label} ({pnl_portfolio_pct:+.2f}% portfela)"
         st.metric(
             "Zysk / strata",
-            format_currency(float(pnl), get_display_currency()),
+            pnl_label,
             delta=f"{roi:.2f}%" if roi == roi else None,
             delta_color=pnl_delta_color(float(pnl)),
         )
 with m4:
     bench_name, _ = resolve_benchmark(selected, currency)
-    st.metric("Benchmark", bench_name)
+    if weight_pct is not None:
+        st.metric("Benchmark", bench_name, delta=f"{weight_pct:.1f}% portfela")
+    else:
+        st.metric("Benchmark", bench_name)
 
 period_label = st.radio(
     "Horyzont czasowy",
@@ -161,6 +179,16 @@ with tab_fund:
     with c3:
         st.metric("52W High", f"{fund.week_52_high:,.2f}" if fund.week_52_high else "—")
         st.metric("52W Low", f"{fund.week_52_low:,.2f}" if fund.week_52_low else "—")
+
+    range_pos = range_position_52w(
+        float(row["market_price"]) if row.get("market_price") == row.get("market_price") else None,
+        fund.week_52_low,
+        fund.week_52_high,
+    )
+    if range_pos is not None:
+        st.progress(range_pos, text=f"Pozycja w zakresie 52W: {range_pos * 100:.0f}% (0% = dołek, 100% = szczyt)")
+    elif fund.week_52_low and fund.week_52_high:
+        st.caption("Brak aktualnej ceny do wyliczenia pozycji w zakresie 52W.")
 
     c4, c5 = st.columns(2)
     with c4:
