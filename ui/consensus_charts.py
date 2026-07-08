@@ -403,3 +403,58 @@ def build_consensus_bullet_chart(df: pd.DataFrame, currency: str) -> go.Figure:
         legend=dict(orientation="h", yanchor="bottom", y=1.01),
     )
     return style_figure(fig)
+
+
+def build_signal_components_stacked(df: pd.DataFrame) -> go.Figure:
+    """
+    Stacked bar składowych sygnału 0–10:
+    technika (0–4), konsensus (0–4), P&L (0–2).
+    """
+    required = {"ticker_xtb", "technical_score", "consensus_score", "pl_score"}
+    if df is None or df.empty or not required.issubset(df.columns):
+        fig = go.Figure()
+        fig.update_layout(title="Brak danych do wykresu składowych sygnału")
+        return style_figure(fig)
+
+    chart = df.copy().sort_values("signal_score", ascending=False, na_position="last")
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=chart["ticker_xtb"],
+            y=chart["technical_score"],
+            name="Technika (0–4)",
+            marker_color="#2563EB",
+            hovertemplate="<b>%{x}</b><br>Technika: %{y:.2f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=chart["ticker_xtb"],
+            y=chart["consensus_score"],
+            name="Konsensus (0–4)",
+            marker_color="#2ecc71",
+            hovertemplate="<b>%{x}</b><br>Konsensus: %{y:.2f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=chart["ticker_xtb"],
+            y=chart["pl_score"],
+            name="P&L (0–2)",
+            marker_color="#f39c12",
+            hovertemplate="<b>%{x}</b><br>P&L: %{y:.2f}<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        barmode="stack",
+        title="Skumulowane składowe sygnału (0–10)",
+        xaxis_title="Ticker",
+        yaxis_title="Suma punktów",
+        yaxis=dict(range=[0, 10]),
+        height=max(380, 42 * len(chart)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        margin=dict(t=72),
+    )
+    return style_figure(fig)

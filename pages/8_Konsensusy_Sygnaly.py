@@ -25,17 +25,22 @@ from core.signals import (
     SIGNAL_BUY,
     SIGNAL_HOLD,
     SIGNAL_SELL,
+    build_signal_matrix,
+    build_stacked_components,
     consensus_score,
     evaluate_signal,
+    interval_agreement_table,
     pl_score,
     technical_score,
 )
 from core.technicals import fetch_technicals, latest_indicator_snapshot
+from core.trade_analytics import backtest_threshold_heuristic
 from ui.chart_navigation import render_navigable_chart
 from ui.consensus_charts import (
     build_consensus_bullet_chart,
     build_pnl_vs_consensus_scatter,
     build_rating_distribution_chart,
+    build_signal_components_stacked,
     build_signal_radar,
     build_target_price_fan,
     build_tech_vs_consensus_bubble,
@@ -382,12 +387,21 @@ with tab_consensus:
 # --- Zakładka 2: Sygnały ---
 with tab_signals:
     st.subheader("Sygnały syntetyczne (technika + konsensus + P&L)")
+    interval_selected = st.segmented_control(
+        "Interwał techniki dla bieżącego sygnału",
+        options=["3M", "6M", "1Y"],
+        default="1Y",
+        key="signals_interval_selected",
+    )
+    interval_selected = interval_selected or "1Y"
     st.caption(
         "Wynik 0–10: technika (40%) + konsensus analityków (40%) + bieżący P&L (20%). "
-        "Dane techniczne z okresu 1Y."
+        f"Bieżący sygnał liczony dla interwału: **{interval_selected}**."
     )
 
     signal_rows: list[dict] = []
+    signal_results = []
+    interval_scores: dict[str, dict[str, float]] = {"3M": {}, "6M": {}, "1Y": {}}
     progress2 = st.progress(0.0, text="Liczenie sygnałów…")
     for i, (_, pos) in enumerate(analyzed.iterrows(), start=1):
         ticker_yahoo = pos["ticker_yahoo"]
@@ -398,7 +412,7 @@ with tab_signals:
 
         snapshot: dict = {}
         try:
-            tech_df = fetch_technicals(ticker_yahoo, "1Y")
+            tech_df = fetch_technicals(ticker_yahoo, interval_selected)
             snapshot = latest_indicator_snapshot(tech_df)
         except Exception:
             st.warning(f"Brak danych technicznych dla {ticker_xtb} — użyto wartości neutralnych.")
@@ -419,6 +433,22 @@ with tab_signals:
             upside_pct=upside,
             roi_pct=roi_val,
         )
+        signal_results.append(result)
+
+        for interval_label in ("3M", "6M", "1Y"):
+            try:
+                interval_df = fetch_technicals(ticker_yahoo, interval_label)
+                interval_snapshot = latest_indicator_snapshot(interval_df)
+                interval_result = evaluate_signal(
+                    ticker_xtb=ticker_xtb,
+                    snapshot=interval_snapshot,
+                    consensus=consensus,
+                    upside_pct=upside,
+                    roi_pct=roi_val,
+                )
+                interval_scores[interval_label][ticker_xtb] = float(interval_result.signal_score)
+            except Exception:
+                continue
 
         tech_desc = f"{result.trend_ma200}"
         if result.rsi is not None:
@@ -482,6 +512,127 @@ with tab_signals:
             ),
         },
     )
+
+    st.divider()
+    st.subheader("Macierz sygnałów i składowe wyniku")
+
+    matrix_df = build_signal_matrix(signal_results)
+    if not matrix_df.empty:
+        heatmap_df = matrix_df.rename(
+            columns={
+                "ticker_xtb": "Ticker",
+                "trend_MA200": "Trend MA",
+                "konsensus": "Konsensus",
+                "score_tech": "Technika",
+                "score_consensus": "Konsensus pkt",
+                "score_pl": "P&L pkt",
+                "score_total": "Wynik końcowy",
+                "signal": "Sygnał",
+            }
+        )[["Ticker", "RSI", "Trend MA", "Konsensus", "P&L_%", "Technika", "Konsensus pkt", "P&L pkt", "Wynik końcowy", "Sygnał"]]
+
+        def _score_color(v: float) -> str:
+            if pd.isna(v):
+                return ""
+            if float(v) >= 7.0:
+                return "background-color: rgba(46, 204, 113, 0.25)"
+            if float(v) >= 4.5:
+                return "background-color: rgba(243, 156, 18, 0.25)"
+            return "background-color: rgba(231, 76, 60, 0.25)"
+
+        def _component_color(v: float) -> str:
+            if pd.isna(v):
+                return ""
+            ratio = max(0.0, min(1.0, float(v) / 4.0))
+            if ratio >= 0.66:
+                return "background-color: rgba(46, 204, 113, 0.18)"
+            if ratio >= 0.4:
+                return "background-color: rgba(243, 156, 18, 0.18)"
+            return "background-color: rgba(231, 76, 60, 0.18)"
+
+        heatmap_styled = (
+            heatmap_df.style.map(_score_color, subset=["Wynik końcowy"])
+            .map(_component_color, subset=["Technika", "Konsensus pkt"])
+            .format(
+                {
+                    "RSI": "{:.1f}",
+                    "P&L_%": "{:.1f}%",
+                    "Technika": "{:.2f}",
+                    "Konsensus pkt": "{:.2f}",
+                    "P&L pkt": "{:.2f}",
+                    "Wynik końcowy": "{:.1f}",
+                },
+                na_rep="—",
+            )
+        )
+        st.dataframe(heatmap_styled, use_container_width=True, hide_index=True)
+
+    components_df = build_stacked_components(signal_results)
+    if not components_df.empty:
+        st.plotly_chart(
+            build_signal_components_stacked(components_df),
+            use_container_width=True,
+            key="signals_components_stacked",
+        )
+
+    st.divider()
+    st.subheader("Zgoda interwałów techniki (3M / 6M / 1Y)")
+    agreement_df = interval_agreement_table(interval_scores)
+    if not agreement_df.empty:
+        agreement_view = agreement_df.rename(
+            columns={
+                "ticker_xtb": "Ticker",
+                "score_3M": "Wynik 3M",
+                "score_6M": "Wynik 6M",
+                "score_1Y": "Wynik 1Y",
+                "zgoda_interwałów": "Zgoda interwałów",
+            }
+        )
+        st.dataframe(
+            agreement_view,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Wynik 3M": st.column_config.NumberColumn("Wynik 3M", format="%.1f"),
+                "Wynik 6M": st.column_config.NumberColumn("Wynik 6M", format="%.1f"),
+                "Wynik 1Y": st.column_config.NumberColumn("Wynik 1Y", format="%.1f"),
+            },
+        )
+
+    st.divider()
+    st.subheader("Backtest heurystyki sygnału (uproszczony)")
+    st.caption(
+        "Symulacja historyczna na zamkniętych transakcjach: wejście tylko gdy score > 7, "
+        "a score < 4 traktowany jako sygnał unikania pozycji."
+    )
+    closed = report.closed_positions if report is not None else None
+    if closed is not None and not closed.empty and "ticker_xtb" in closed.columns:
+        score_map = {r.ticker_xtb: r.signal_score for r in signal_results}
+        close_scores = closed["ticker_xtb"].map(score_map)
+        bt = backtest_threshold_heuristic(closed, close_scores, buy_threshold=7.0, sell_threshold=4.0)
+
+        b1, b2, b3, b4 = st.columns(4)
+        with b1:
+            st.metric("Transakcje (historia)", int(bt["trades_total"]))
+        with b2:
+            st.metric("Wzięte przez strategię", int(bt["trades_taken"]))
+        with b3:
+            st.metric("Win rate: benchmark", f"{bt['hit_rate_baseline']:.1f}%")
+        with b4:
+            st.metric("Win rate: strategia", f"{bt['hit_rate_strategy']:.1f}%")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.metric(f"P&L benchmark ({currency})", f"{bt['pnl_baseline']:+.2f}")
+        with c2:
+            st.metric(f"P&L strategia ({currency})", f"{bt['pnl_strategy']:+.2f}")
+
+        st.caption(
+            "Uwaga: backtest mapuje bieżący score tickera do historycznych zamknięć "
+            "(przybliżenie bez rekonstrukcji sygnału dzień-po-dniu)."
+        )
+    else:
+        st.info("Brak danych `Closed Positions` — backtest wymaga zamkniętych transakcji.")
 
     st.info(
         "ℹ️ Sygnały są heurystykami pomocniczymi, nie stanowią porady inwestycyjnej."

@@ -9,6 +9,8 @@ import streamlit as st
 import yfinance as yf
 
 PERIOD_OPTIONS: dict[str, str] = {
+    "3M": "3mo",
+    "6M": "6mo",
     "1Y": "1y",
     "3Y": "3y",
     "5Y": "5y",
