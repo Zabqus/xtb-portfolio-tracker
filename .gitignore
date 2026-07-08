@@ -17,6 +17,9 @@ env/
 # Lokalna watchlista użytkownika
 watchlist.json
 
+# Lokalne tagi round-tripów (entry/exit)
+trade_tags.json
+
 # Lokalne preferencje użytkownika (motyw itd.)
 user_preferences.json
 

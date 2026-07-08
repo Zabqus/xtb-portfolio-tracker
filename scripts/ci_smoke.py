@@ -31,6 +31,7 @@ def main() -> int:
         "core.closed_analysis",
         "core.trade_analytics",
         "core.trade_excursions",
+        "core.trade_tags",
         "core.cost_basis",
         "core.technicals",
         "core.watchlist",

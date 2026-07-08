@@ -37,9 +37,12 @@ from core.trade_analytics import (
     compute_rolling_metrics,
     compute_streak_stats,
     compute_trade_heatmap,
+    filter_round_trips,
+    filter_trades_for_analytics,
     summarize_tags,
 )
 from core.trade_excursions import compute_mae_mfe
+from core.trade_tags import persist_tags_from_dataframe
 from core.transactions import parse_cash_operations_trades
 from ui.analytics_charts import (
     build_efficiency_chart,
@@ -209,8 +212,55 @@ with tab_analytics:
                 f"**{format_currency(summary.total_realized_pnl, currency)}**"
             )
 
+            rt = pd.DataFrame()
             if has_round_trips:
-                exp = compute_expectancy_metrics(round_trips)
+                all_round_trips = round_trips.copy()
+                all_round_trips["close_time"] = pd.to_datetime(
+                    all_round_trips["close_time"], errors="coerce"
+                )
+                min_close = all_round_trips["close_time"].min().date()
+                max_close = all_round_trips["close_time"].max().date()
+                tickers_rt = ["Wszystkie"] + sorted(all_round_trips["ticker_xtb"].unique())
+
+                st.markdown("### Filtry analizy")
+                f1, f2, f3 = st.columns([2, 2, 2])
+                with f1:
+                    selected_ticker = st.selectbox(
+                        "Ticker",
+                        tickers_rt,
+                        key="analytics_ticker_filter",
+                    )
+                with f2:
+                    date_from = st.date_input(
+                        "Od (data zamknięcia)",
+                        value=min_close,
+                        min_value=min_close,
+                        max_value=max_close,
+                        key="analytics_date_from",
+                    )
+                with f3:
+                    date_to = st.date_input(
+                        "Do (data zamknięcia)",
+                        value=max_close,
+                        min_value=min_close,
+                        max_value=max_close,
+                        key="analytics_date_to",
+                    )
+
+                rt = filter_round_trips(
+                    all_round_trips,
+                    ticker=selected_ticker,
+                    date_from=pd.Timestamp(date_from),
+                    date_to=pd.Timestamp(date_to),
+                )
+                if rt.empty:
+                    st.warning("Brak round-tripów dla wybranych filtrów.")
+                else:
+                    st.caption(
+                        f"Filtr aktywny: **{len(rt)} / {len(all_round_trips)}** round-tripów."
+                    )
+
+                exp = compute_expectancy_metrics(rt if not rt.empty else all_round_trips)
                 e1, e2, e3 = st.columns(3)
                 with e1:
                     st.metric("Expectancy / trade", format_currency(exp["expectancy_value"], currency))
@@ -226,14 +276,17 @@ with tab_analytics:
                     use_container_width=True,
                 )
             with c2:
-                if has_round_trips:
+                if has_round_trips and not rt.empty:
                     st.plotly_chart(
-                        build_holding_period_chart(round_trips),
+                        build_holding_period_chart(rt),
                         use_container_width=True,
                     )
+                elif has_round_trips:
+                    st.info("Brak danych do histogramu czasu trzymania dla filtra.")
 
-            if has_round_trips:
+            if has_round_trips and not rt.empty:
                 trades = parse_cash_operations_trades(report.cash_operations)
+                trades_filtered = filter_trades_for_analytics(trades, rt)
 
                 st.markdown("### Krzywa equity tradera")
                 st.caption(
@@ -241,7 +294,7 @@ with tab_analytics:
                     "każdej transakcji kupna/sprzedaży na osi czasu."
                 )
                 st.plotly_chart(
-                    build_trader_equity_curve(round_trips, trades, currency),
+                    build_trader_equity_curve(rt, trades_filtered, currency),
                     use_container_width=True,
                 )
 
@@ -252,7 +305,7 @@ with tab_analytics:
                     "był niezrealizowany zysk, zanim zamknąłeś pozycję."
                 )
                 with st.spinner("Pobieranie cen historycznych (Yahoo)…"):
-                    trips_exc = compute_mae_mfe(round_trips)
+                    trips_exc = compute_mae_mfe(rt)
                 st.plotly_chart(build_mae_mfe_chart(trips_exc), use_container_width=True)
 
                 trips_eff = add_trade_efficiency_metrics(trips_exc)
@@ -265,18 +318,18 @@ with tab_analytics:
 
                 st.markdown("### Czas trzymania vs wynik")
                 st.plotly_chart(
-                    build_holding_vs_outcome_chart(round_trips),
+                    build_holding_vs_outcome_chart(rt),
                     use_container_width=True,
                 )
 
-                rolling = compute_rolling_metrics(round_trips, windows=(30, 50))
+                rolling = compute_rolling_metrics(rt, windows=(30, 50))
                 st.markdown("### Rolling win rate / rolling profit factor")
                 st.plotly_chart(
                     build_rolling_metrics_chart(rolling),
                     use_container_width=True,
                 )
 
-                daily_heat, weekly_heat = compute_trade_heatmap(round_trips)
+                daily_heat, weekly_heat = compute_trade_heatmap(rt)
                 st.markdown("### Dzienny / tygodniowy heatmap P&L")
                 h1, h2 = st.columns(2)
                 with h1:
@@ -300,7 +353,7 @@ with tab_analytics:
                         use_container_width=True,
                     )
 
-                streak_stats = compute_streak_stats(round_trips)
+                streak_stats = compute_streak_stats(rt)
                 st.markdown("### Sekwencja wygranych / przegranych")
                 s1, s2, s3, s4 = st.columns(4)
                 with s1:
@@ -313,11 +366,11 @@ with tab_analytics:
                     label = "wygranych" if streak_stats["current_streak_type"] == "win" else "przegranych"
                     st.metric("Typ serii", label)
                 st.plotly_chart(
-                    build_streak_chart(round_trips, streak_stats["streak_events"]),
+                    build_streak_chart(rt, streak_stats["streak_events"]),
                     use_container_width=True,
                 )
 
-                trips_exit = classify_exit_strategy(round_trips)
+                trips_exit = classify_exit_strategy(rt)
                 st.markdown("### Porównanie strategii wyjścia")
                 st.caption(
                     "Heurystyczna klasyfikacja: zysk >20%, stop-loss (≤-5%), "
@@ -327,11 +380,20 @@ with tab_analytics:
 
                 st.markdown("### Tagi przyczyny wejścia/wyjścia (manualne)")
                 st.caption(
-                    "Edytuj tagi ręcznie i od razu zobacz statystyki skuteczności per tag."
+                    "Edytuj tagi ręcznie — zapis lokalny w `trade_tags.json` "
+                    "(utrzymuje się po restarcie aplikacji)."
                 )
-                tagged = apply_trade_tags(round_trips)
+                tagged = apply_trade_tags(rt)
                 editable = tagged[
-                    ["ticker_xtb", "open_time", "close_time", "realized_pnl", "entry_tag", "exit_tag"]
+                    [
+                        "trip_id",
+                        "ticker_xtb",
+                        "open_time",
+                        "close_time",
+                        "realized_pnl",
+                        "entry_tag",
+                        "exit_tag",
+                    ]
                 ].copy()
                 editable = editable.rename(
                     columns={
@@ -349,9 +411,18 @@ with tab_analytics:
                     hide_index=True,
                     key="trade_tags_editor",
                     num_rows="fixed",
+                    column_config={"trip_id": None},
                 )
                 tagged["entry_tag"] = edited["Entry tag"].astype(str).str.strip().replace("", "other")
                 tagged["exit_tag"] = edited["Exit tag"].astype(str).str.strip().replace("", "other")
+                saved_count = persist_tags_from_dataframe(
+                    tagged,
+                    trip_id_col="trip_id",
+                    entry_col="entry_tag",
+                    exit_col="exit_tag",
+                )
+                if saved_count:
+                    st.caption(f"Zapisano {saved_count} zmian tagów do `trade_tags.json`.")
                 tag_summary = summarize_tags(tagged)
                 tc1, tc2 = st.columns(2)
                 with tc1:
@@ -366,18 +437,16 @@ with tab_analytics:
                     )
 
                 st.plotly_chart(
-                    build_round_trip_pnl_chart(round_trips),
+                    build_round_trip_pnl_chart(rt),
                     use_container_width=True,
                 )
 
                 st.markdown("### Round-tripy (FIFO z Cash Operations)")
                 st.caption(
-                    f"**{len(round_trips)} wierszy** = tyle zamkniętych fragmentów pozycji "
-                    "(każdy wiersz to jedno dopasowanie kupno → sprzedaż). "
-                    "To **jedna tabela**, nie wiele kopii. "
-                    "Różni się od zakładki *Zamknięte pozycje* (raport XTB, inny podział transakcji)."
+                    f"**{len(rt)} wierszy** po filtrze (łącznie {len(all_round_trips)}). "
+                    "Każdy wiersz to jedno dopasowanie kupno → sprzedaż."
                 )
-                render_round_trips_table(round_trips)
+                render_round_trips_table(rt)
 
         st.divider()
         st.subheader("Cost basis — historia średniej ceny")

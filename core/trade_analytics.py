@@ -374,20 +374,69 @@ def compute_trade_heatmap(round_trips: pd.DataFrame) -> tuple[pd.DataFrame, pd.D
     return daily, weekly
 
 
+def filter_round_trips(
+    round_trips: pd.DataFrame,
+    *,
+    ticker: str | None = None,
+    date_from: pd.Timestamp | None = None,
+    date_to: pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    """Filtruje round-tripy po tickerze i zakresie dat zamknięcia."""
+    if round_trips is None or round_trips.empty:
+        return round_trips
+
+    df = round_trips.copy()
+    df["close_time"] = pd.to_datetime(df["close_time"], errors="coerce")
+    df = df.dropna(subset=["close_time"])
+
+    if ticker and ticker != "Wszystkie":
+        df = df[df["ticker_xtb"] == ticker]
+
+    if date_from is not None:
+        df = df[df["close_time"] >= pd.Timestamp(date_from).normalize()]
+
+    if date_to is not None:
+        end = pd.Timestamp(date_to).normalize() + pd.Timedelta(days=1)
+        df = df[df["close_time"] < end]
+
+    return df.reset_index(drop=True)
+
+
+def filter_trades_for_analytics(
+    trades: pd.DataFrame,
+    filtered_round_trips: pd.DataFrame,
+) -> pd.DataFrame:
+    """Ogranicza markery transakcji do tickera i okna czasu z filtrowanych round-tripów."""
+    if trades is None or trades.empty or filtered_round_trips is None or filtered_round_trips.empty:
+        return pd.DataFrame()
+
+    tickers = set(filtered_round_trips["ticker_xtb"].astype(str))
+    open_min = pd.to_datetime(filtered_round_trips["open_time"], errors="coerce").min()
+    close_max = pd.to_datetime(filtered_round_trips["close_time"], errors="coerce").max()
+
+    out = trades.copy()
+    out["trade_time"] = pd.to_datetime(out["trade_time"], errors="coerce")
+    out = out[out["ticker_xtb"].astype(str).isin(tickers)]
+    if pd.notna(open_min):
+        out = out[out["trade_time"] >= open_min]
+    if pd.notna(close_max):
+        out = out[out["trade_time"] <= close_max]
+    return out.reset_index(drop=True)
+
+
 def apply_trade_tags(
     round_trips: pd.DataFrame,
     default_entry_tag: str = "other",
     default_exit_tag: str = "other",
 ) -> pd.DataFrame:
-    """Dodaje kolumny tagów wejścia/wyjścia do dalszej manualnej edycji w UI."""
-    if round_trips is None or round_trips.empty:
-        return pd.DataFrame()
-    df = round_trips.copy()
-    if "entry_tag" not in df.columns:
-        df["entry_tag"] = default_entry_tag
-    if "exit_tag" not in df.columns:
-        df["exit_tag"] = default_exit_tag
-    return df
+    """Dodaje kolumny tagów wejścia/wyjścia (wczytane z trade_tags.json)."""
+    from core.trade_tags import merge_tags_into_round_trips
+
+    return merge_tags_into_round_trips(
+        round_trips,
+        default_entry_tag=default_entry_tag,
+        default_exit_tag=default_exit_tag,
+    )
 
 
 def summarize_tags(tagged_round_trips: pd.DataFrame) -> pd.DataFrame:
