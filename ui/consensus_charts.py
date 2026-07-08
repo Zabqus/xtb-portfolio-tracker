@@ -88,7 +88,7 @@ def build_pnl_vs_consensus_scatter(df: pd.DataFrame, currency: str) -> go.Figure
         size="size_scaled",
         color="Rating",
         hover_name="Ticker",
-        color_discrete_map="set2",
+        color_discrete_sequence=px.colors.qualitative.Set2,
         labels={"Upside %": "Upside do celu (%)", "Twój P&L %": "Twój ROI (%)"},
         title=f"Twój P&L vs konsensus analityków ({currency})",
     )

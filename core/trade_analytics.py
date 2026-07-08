@@ -157,8 +157,10 @@ def compute_trade_analytics(
     if closed is not None and not closed.empty and "pnl" in closed.columns:
         total_pnl = float(closed["pnl"].sum())
 
+    closed_count = int(len(closed)) if closed is not None else 0
+
     summary = TradeAnalyticsSummary(
-        closed_trades=len(round_trips) if not round_trips.empty else len(closed or []),
+        closed_trades=len(round_trips) if not round_trips.empty else closed_count,
         win_rate_pct=win_rate,
         avg_holding_days=avg_hold,
         median_holding_days=median_hold,
