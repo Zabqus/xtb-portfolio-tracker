@@ -86,123 +86,221 @@ hr { margin: 1.4rem 0; }
 </style>
 """
 
-_CSS_LIGHT = """
+_CSS_WIDGETS_LIGHT = """
+h1, h2, h3, h4, h5, h6,
+p, label, span, li,
+[data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] p {
+    color: #0F172A !important;
+}
+.stCaption, [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {
+    color: #64748B !important;
+}
+.stTabs [data-baseweb="tab"] { color: #475569 !important; }
+.stTabs [aria-selected="true"] { color: #2563EB !important; }
+div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
+div[data-testid="stTextInput"] input,
+div[data-testid="stNumberInput"] input,
+div[data-testid="stDateInput"] input,
+div[data-testid="stFileUploader"] section,
+div[data-testid="stTextArea"] textarea {
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+    border-color: #CBD5E1 !important;
+}
+div[data-testid="stRadio"] label,
+div[data-testid="stCheckbox"] label {
+    color: #0F172A !important;
+}
+[data-testid="stDataEditor"],
+[data-testid="stDataEditor"] [data-testid="glideDataEditor"],
+[data-testid="stDataFrame"] {
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+}
+[data-testid="stDataEditor"] input,
+[data-testid="stDataEditor"] textarea {
+    color: #0F172A !important;
+    background-color: #FFFFFF !important;
+}
+[data-testid="stPlotlyChart"] {
+    background-color: #FFFFFF;
+    border-radius: 12px;
+    border: 1px solid #E2E8F0;
+    padding: 4px;
+}
+div[data-testid="stAlert"] p,
+div[data-testid="stAlert"] span {
+    color: inherit !important;
+}
+"""
+
+_CSS_WIDGETS_DARK = """
+h1, h2, h3, h4, h5, h6, p, label, span, li { color: #E2E8F0; }
+.stCaption, [data-testid="stCaptionContainer"] { color: #94A3B8 !important; }
+div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
+div[data-testid="stTextInput"] input,
+div[data-testid="stNumberInput"] input,
+div[data-testid="stDateInput"] input,
+div[data-testid="stFileUploader"] section,
+div[data-testid="stTextArea"] textarea {
+    background-color: #1E293B !important;
+    color: #E2E8F0 !important;
+    border-color: #334155 !important;
+}
+div[data-testid="stRadio"] label,
+div[data-testid="stCheckbox"] label {
+    color: #E2E8F0 !important;
+}
+[data-testid="stDataEditor"],
+[data-testid="stDataEditor"] [data-testid="glideDataEditor"],
+[data-testid="stDataFrame"] {
+    background-color: #1E293B !important;
+    color: #E2E8F0 !important;
+}
+[data-testid="stDataEditor"] input,
+[data-testid="stDataEditor"] textarea {
+    color: #E2E8F0 !important;
+    background-color: #1E293B !important;
+}
+[data-testid="stPlotlyChart"] {
+    background-color: #1E293B;
+    border-radius: 12px;
+    border: 1px solid #334155;
+    padding: 4px;
+}
+div[data-testid="stAlert"] p { color: inherit; }
+"""
+
+_CSS_VARS_LIGHT = """
 <style>
-.stApp, [data-testid="stAppViewContainer"] {
+:root {
+    --background-color: #FFFFFF;
+    --secondary-background-color: #F8FAFC;
+    --text-color: #0F172A;
+}
+</style>
+"""
+
+_CSS_VARS_DARK = """
+<style>
+:root {
+    --background-color: #0F172A;
+    --secondary-background-color: #1E293B;
+    --text-color: #E2E8F0;
+}
+</style>
+"""
+
+_CSS_LIGHT = f"""
+<style>
+.stApp, [data-testid="stAppViewContainer"] {{
     background-color: #FFFFFF;
     color: #0F172A;
-}
-[data-testid="stMetric"] {
+}}
+{_CSS_WIDGETS_LIGHT}
+[data-testid="stMetric"] {{
     background: #FFFFFF;
     border: 1px solid #E2E8F0;
     border-radius: 14px;
     padding: 16px 18px;
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     transition: box-shadow 0.15s ease, transform 0.15s ease;
-}
-[data-testid="stMetric"]:hover {
+}}
+[data-testid="stMetric"]:hover {{
     box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
     transform: translateY(-1px);
-}
-[data-testid="stMetricLabel"] p {
+}}
+[data-testid="stMetricLabel"] p {{
     font-size: 0.82rem;
     font-weight: 600;
     color: #64748B;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-}
-[data-testid="stMetricValue"] { font-weight: 720; font-size: 1.55rem; color: #0F172A; }
-.stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 1px solid #E2E8F0; }
-.stTabs [data-baseweb="tab"] { border-radius: 8px 8px 0 0; padding: 8px 16px; font-weight: 600; }
-.stTabs [aria-selected="true"] { background: #EFF6FF; color: #2563EB; }
-.stButton > button, .stDownloadButton > button {
+}}
+[data-testid="stMetricValue"] {{ font-weight: 720; font-size: 1.55rem; color: #0F172A; }}
+.stTabs [data-baseweb="tab-list"] {{ gap: 4px; border-bottom: 1px solid #E2E8F0; }}
+.stTabs [data-baseweb="tab"] {{ border-radius: 8px 8px 0 0; padding: 8px 16px; font-weight: 600; }}
+.stTabs [aria-selected="true"] {{ background: #EFF6FF; color: #2563EB; }}
+.stButton > button, .stDownloadButton > button {{
     border: 1px solid #E2E8F0;
     background: #FFFFFF;
     color: #0F172A;
-}
-.stButton > button:hover, .stDownloadButton > button:hover {
+}}
+.stButton > button:hover, .stDownloadButton > button:hover {{
     border-color: #2563EB;
     box-shadow: 0 3px 10px rgba(37, 99, 235, 0.15);
-}
-[data-testid="stDataFrame"] { border: 1px solid #E2E8F0; }
-[data-testid="stExpander"] { border: 1px solid #E2E8F0; background: #FFFFFF; }
-[data-testid="stSidebar"] {
+}}
+[data-testid="stDataFrame"] {{ border: 1px solid #E2E8F0; }}
+[data-testid="stExpander"] {{ border: 1px solid #E2E8F0; background: #FFFFFF; }}
+[data-testid="stSidebar"] {{
     background: #F8FAFC;
     border-right: 1px solid #E2E8F0;
-}
-[data-testid="stSidebar"] h2 { font-size: 1.15rem; color: #0F172A; }
-[data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label { color: #334155; }
-div[data-testid="stAlert"] { border-radius: 10px; }
+}}
+[data-testid="stSidebar"] h2 {{ font-size: 1.15rem; color: #0F172A; }}
+[data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label {{ color: #334155; }}
+div[data-testid="stAlert"] {{ border-radius: 10px; }}
 </style>
 """
 
-_CSS_DARK = """
+_CSS_DARK = f"""
 <style>
-.stApp, [data-testid="stAppViewContainer"] {
+.stApp, [data-testid="stAppViewContainer"] {{
     background-color: #0F172A;
     color: #E2E8F0;
-}
-h1, h2, h3, h4, h5, h6, p, label, span, li { color: #E2E8F0; }
-.stCaption, [data-testid="stCaptionContainer"] { color: #94A3B8 !important; }
-[data-testid="stMetric"] {
+}}
+{_CSS_WIDGETS_DARK}
+[data-testid="stMetric"] {{
     background: #1E293B;
     border: 1px solid #334155;
     border-radius: 14px;
     padding: 16px 18px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
     transition: box-shadow 0.15s ease, transform 0.15s ease;
-}
-[data-testid="stMetric"]:hover {
+}}
+[data-testid="stMetric"]:hover {{
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
     transform: translateY(-1px);
-}
-[data-testid="stMetricLabel"] p {
+}}
+[data-testid="stMetricLabel"] p {{
     font-size: 0.82rem;
     font-weight: 600;
     color: #94A3B8;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-}
-[data-testid="stMetricValue"] { font-weight: 720; font-size: 1.55rem; color: #F1F5F9; }
-.stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 1px solid #334155; }
-.stTabs [data-baseweb="tab"] {
+}}
+[data-testid="stMetricValue"] {{ font-weight: 720; font-size: 1.55rem; color: #F1F5F9; }}
+.stTabs [data-baseweb="tab-list"] {{ gap: 4px; border-bottom: 1px solid #334155; }}
+.stTabs [data-baseweb="tab"] {{
     border-radius: 8px 8px 0 0;
     padding: 8px 16px;
     font-weight: 600;
     color: #94A3B8;
     background: transparent;
-}
-.stTabs [aria-selected="true"] { background: #1E3A5F; color: #60A5FA; }
-.stButton > button, .stDownloadButton > button {
+}}
+.stTabs [aria-selected="true"] {{ background: #1E3A5F; color: #60A5FA; }}
+.stButton > button, .stDownloadButton > button {{
     border: 1px solid #334155;
     background: #1E293B;
     color: #E2E8F0;
-}
-.stButton > button:hover, .stDownloadButton > button:hover {
+}}
+.stButton > button:hover, .stDownloadButton > button:hover {{
     border-color: #3B82F6;
     box-shadow: 0 3px 12px rgba(59, 130, 246, 0.25);
-}
-[data-testid="stDataFrame"] { border: 1px solid #334155; }
-[data-testid="stExpander"] {
+}}
+[data-testid="stDataFrame"] {{ border: 1px solid #334155; }}
+[data-testid="stExpander"] {{
     border: 1px solid #334155;
     background: #1E293B;
-}
-[data-testid="stSidebar"] {
+}}
+[data-testid="stSidebar"] {{
     background: #0B1220;
     border-right: 1px solid #334155;
-}
-[data-testid="stSidebar"] h2 { font-size: 1.15rem; color: #F1F5F9; }
-[data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label { color: #CBD5E1; }
-div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
-div[data-testid="stTextInput"] input,
-div[data-testid="stNumberInput"] input,
-div[data-testid="stFileUploader"] section {
-    background-color: #1E293B !important;
-    color: #E2E8F0 !important;
-    border-color: #334155 !important;
-}
-div[data-testid="stAlert"] { border-radius: 10px; }
-div[data-testid="stAlert"] p { color: inherit; }
+}}
+[data-testid="stSidebar"] h2 {{ font-size: 1.15rem; color: #F1F5F9; }}
+[data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label {{ color: #CBD5E1; }}
+div[data-testid="stAlert"] {{ border-radius: 10px; }}
 </style>
 """
 
@@ -211,8 +309,8 @@ def init_color_theme() -> None:
     """Ładuje zapisany motyw do session_state (wspólny dla wszystkich podstron)."""
     if "color_theme" in st.session_state:
         return
-    saved = load_preferences().get("color_theme", "light")
-    st.session_state.color_theme = saved if saved in _THEME_OPTIONS else "light"
+    saved = load_preferences().get("color_theme", "dark")
+    st.session_state.color_theme = saved if saved in _THEME_OPTIONS else "dark"
 
 
 def _persist_color_theme() -> None:
@@ -223,7 +321,7 @@ def _persist_color_theme() -> None:
 
 def _sync_client_theme(theme: str) -> None:
     """Natychmiastowa synchronizacja motywu w localStorage (anty-flicker)."""
-    safe = theme if theme in _THEME_OPTIONS else "light"
+    safe = theme if theme in _THEME_OPTIONS else "dark"
     st.html(
         f"""<script>
         window.__xtbSetTheme && window.__xtbSetTheme({safe!r});
@@ -245,20 +343,13 @@ def _theme_preload_html(server_theme: str) -> str:
   const SERVER = {server_theme!r};
 
   function resolveTheme() {{
-    try {{
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored === "dark" || stored === "light") return stored;
-    }} catch (e) {{}}
     return SERVER === "dark" ? "dark" : "light";
   }}
 
   function applyTheme(theme) {{
-    if (document.documentElement.getAttribute("data-xtb-theme") === theme
-        && document.getElementById(STYLE_ID)) {{
-      return;
-    }}
-    const css = CRITICAL[theme] || CRITICAL.light;
-    try {{ localStorage.setItem(STORAGE_KEY, theme); }} catch (e) {{}}
+    const resolved = theme === "dark" ? "dark" : "light";
+    const css = CRITICAL[resolved] || CRITICAL.dark;
+    try {{ localStorage.setItem(STORAGE_KEY, resolved); }} catch (e) {{}}
     let el = document.getElementById(STYLE_ID);
     if (!el) {{
       el = document.createElement("style");
@@ -266,19 +357,11 @@ def _theme_preload_html(server_theme: str) -> str:
       document.head.appendChild(el);
     }}
     el.textContent = css;
-    document.documentElement.setAttribute("data-xtb-theme", theme);
+    document.documentElement.setAttribute("data-xtb-theme", resolved);
   }}
 
   window.__xtbSetTheme = applyTheme;
-
   applyTheme(resolveTheme());
-
-  if (!window.__xtbThemeObserverAttached) {{
-    window.__xtbThemeObserverAttached = true;
-    new MutationObserver(function () {{
-      applyTheme(resolveTheme());
-    }}).observe(document.documentElement, {{ childList: true, subtree: true }});
-  }}
 }})();
 </script>"""
 
@@ -300,7 +383,7 @@ def get_color_theme() -> str:
     """Aktywny motyw: 'light' lub 'dark'."""
     init_color_theme()
     theme = st.session_state.color_theme
-    return theme if theme in _THEME_OPTIONS else "light"
+    return theme if theme in _THEME_OPTIONS else "dark"
 
 
 def is_dark_theme() -> bool:
@@ -322,7 +405,9 @@ def loss_color() -> str:
 def inject_global_css() -> None:
     """Wstrzykuje globalny CSS. Bezpieczne do wołania na każdej stronie."""
     init_color_theme()
-    css = _CSS_SHARED + (_CSS_DARK if is_dark_theme() else _CSS_LIGHT)
+    dark = is_dark_theme()
+    css = _CSS_SHARED + (_CSS_VARS_DARK if dark else _CSS_VARS_LIGHT)
+    css += _CSS_DARK if dark else _CSS_LIGHT
     st.markdown(css, unsafe_allow_html=True)
     _sync_client_theme(get_color_theme())
 
@@ -366,7 +451,7 @@ def trend_color_css(kind: str) -> str:
 
 
 def muted_text_color() -> str:
-    return "#64748B" if is_dark_theme() else "#94A3B8"
+    return "#94A3B8" if is_dark_theme() else "#64748B"
 
 
 def glossary_term_html(term: str, definition: str) -> str:

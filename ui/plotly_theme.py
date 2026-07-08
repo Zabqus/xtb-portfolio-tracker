@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 
 from ui.theme import is_dark_theme
 
-_HEATMAP_SCALE_LIGHT = ["#3498db", "#ffffff", "#e74c3c"]
+_HEATMAP_SCALE_LIGHT = ["#3498db", "#F1F5F9", "#e74c3c"]
 _HEATMAP_SCALE_DARK = ["#3498db", "#334155", "#e74c3c"]
 
 
@@ -22,14 +22,14 @@ def _palette() -> dict[str, str]:
     if is_dark_theme():
         return {
             "plot_bg": "#1E293B",
-            "paper_bg": "rgba(0,0,0,0)",
+            "paper_bg": "#1E293B",
             "font": "#E2E8F0",
             "grid": "#334155",
             "zeroline": "#475569",
         }
     return {
         "plot_bg": "#FFFFFF",
-        "paper_bg": "rgba(0,0,0,0)",
+        "paper_bg": "#FFFFFF",
         "font": "#0F172A",
         "grid": "#E2E8F0",
         "zeroline": "#CBD5E1",
