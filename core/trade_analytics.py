@@ -174,6 +174,101 @@ def compute_trade_analytics(
     return summary, round_trips
 
 
+def classify_exit_strategy(round_trips: pd.DataFrame) -> pd.DataFrame:
+    """
+    Kategoryzuje zamknięte round-tripy (wzajemnie wykluczające się):
+
+    * profit_target — zysk > 20%
+    * stop_loss — strata ≤ -5%
+    * time_based — trzymanie ≥ 90 dni (bez powyższych)
+    * other — pozostałe
+    """
+    if round_trips is None or round_trips.empty:
+        return pd.DataFrame()
+
+    df = round_trips.copy()
+    pnl_pct = pd.to_numeric(df.get("pnl_pct"), errors="coerce").fillna(0.0)
+    holding = pd.to_numeric(df.get("holding_days"), errors="coerce").fillna(0.0)
+
+    category = pd.Series("other", index=df.index, dtype="object")
+    category.loc[pnl_pct <= -5] = "stop_loss"
+    category.loc[pnl_pct > 20] = "profit_target"
+    mask_time = (holding >= 90) & category.eq("other")
+    category.loc[mask_time] = "time_based"
+    df["exit_category"] = category
+    return df
+
+
+def compute_streak_stats(round_trips: pd.DataFrame) -> dict:
+    """
+    Statystyki serii wygranych/przegranych (po close_time).
+
+    Zwraca: max_win_streak, max_loss_streak, current_streak, current_streak_type,
+            streak_events (DataFrame z każdą serią).
+    """
+    empty = {
+        "max_win_streak": 0,
+        "max_loss_streak": 0,
+        "current_streak": 0,
+        "current_streak_type": "—",
+        "streak_events": pd.DataFrame(),
+    }
+    if round_trips is None or round_trips.empty or "is_win" not in round_trips.columns:
+        return empty
+
+    df = round_trips.sort_values("close_time").reset_index(drop=True)
+    wins = df["is_win"].astype(bool).tolist()
+    if not wins:
+        return empty
+
+    events: list[dict] = []
+    streak_type = wins[0]
+    streak_len = 1
+    streak_start = 0
+
+    for i in range(1, len(wins)):
+        if wins[i] == streak_type:
+            streak_len += 1
+        else:
+            events.append(
+                {
+                    "start_idx": streak_start,
+                    "end_idx": i - 1,
+                    "length": streak_len,
+                    "is_win": streak_type,
+                    "start_time": df.loc[streak_start, "close_time"],
+                    "end_time": df.loc[i - 1, "close_time"],
+                }
+            )
+            streak_type = wins[i]
+            streak_len = 1
+            streak_start = i
+
+    events.append(
+        {
+            "start_idx": streak_start,
+            "end_idx": len(wins) - 1,
+            "length": streak_len,
+            "is_win": streak_type,
+            "start_time": df.loc[streak_start, "close_time"],
+            "end_time": df.loc[len(wins) - 1, "close_time"],
+        }
+    )
+
+    streak_df = pd.DataFrame(events)
+    win_lengths = streak_df.loc[streak_df["is_win"], "length"]
+    loss_lengths = streak_df.loc[~streak_df["is_win"], "length"]
+
+    current = events[-1]
+    return {
+        "max_win_streak": int(win_lengths.max()) if not win_lengths.empty else 0,
+        "max_loss_streak": int(loss_lengths.max()) if not loss_lengths.empty else 0,
+        "current_streak": int(current["length"]),
+        "current_streak_type": "win" if current["is_win"] else "loss",
+        "streak_events": streak_df,
+    }
+
+
 def backtest_threshold_heuristic(
     closed_or_round_trips: pd.DataFrame,
     signal_scores: pd.Series,

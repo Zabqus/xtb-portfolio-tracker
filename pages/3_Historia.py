@@ -14,7 +14,7 @@ from core.dividends import (
     dividends_summary,
     parse_dividends,
 )
-from core.dividend_calendar import build_dividend_calendar
+from core.dividend_calendar import build_dividend_calendar, build_dividend_yield_comparison
 from core.session import (
     get_analyzed_open,
     get_cost_basis_history,
@@ -24,11 +24,18 @@ from core.session import (
     get_trade_analytics,
 )
 from core.tax_harvest import compute_tax_harvest
+from core.trade_analytics import classify_exit_strategy, compute_streak_stats
+from core.trade_excursions import compute_mae_mfe
 from core.transactions import parse_cash_operations_trades
 from ui.analytics_charts import (
     build_cost_basis_chart,
+    build_exit_strategy_chart,
     build_holding_period_chart,
+    build_holding_vs_outcome_chart,
+    build_mae_mfe_chart,
     build_round_trip_pnl_chart,
+    build_streak_chart,
+    build_trader_equity_curve,
     build_win_loss_comparison,
 )
 from ui.charts import build_closed_pnl_chart
@@ -37,7 +44,9 @@ from ui.history_charts import (
     build_contributions_vs_value_chart,
     build_cumulative_dividends_chart,
     build_cumulative_realized_pnl,
+    build_dividend_yield_comparison_chart,
     build_dividends_per_year_chart,
+    build_ex_dividend_calendar_chart,
     build_portfolio_timeline_chart,
 )
 from ui.returns_charts import build_portfolio_value_drawdown_chart
@@ -194,6 +203,59 @@ with tab_analytics:
                     )
 
             if has_round_trips:
+                trades = parse_cash_operations_trades(report.cash_operations)
+
+                st.markdown("### Krzywa equity tradera")
+                st.caption(
+                    "Skumulowany zrealizowany P&L z round-tripów FIFO + markery "
+                    "każdej transakcji kupna/sprzedaży na osi czasu."
+                )
+                st.plotly_chart(
+                    build_trader_equity_curve(round_trips, trades, currency),
+                    use_container_width=True,
+                )
+
+                st.markdown("### MAE / MFE — ekscurcje w trakcie trzymania")
+                st.caption(
+                    "MAE (Maximum Adverse Excursion) — jak głęboko poszła strata "
+                    "niezrealizowana. MFE (Maximum Favorable Excursion) — jak wysoki "
+                    "był niezrealizowany zysk, zanim zamknąłeś pozycję."
+                )
+                with st.spinner("Pobieranie cen historycznych (Yahoo)…"):
+                    trips_exc = compute_mae_mfe(round_trips)
+                st.plotly_chart(build_mae_mfe_chart(trips_exc), use_container_width=True)
+
+                st.markdown("### Czas trzymania vs wynik")
+                st.plotly_chart(
+                    build_holding_vs_outcome_chart(round_trips),
+                    use_container_width=True,
+                )
+
+                streak_stats = compute_streak_stats(round_trips)
+                st.markdown("### Sekwencja wygranych / przegranych")
+                s1, s2, s3, s4 = st.columns(4)
+                with s1:
+                    st.metric("Max seria wygranych", streak_stats["max_win_streak"])
+                with s2:
+                    st.metric("Max seria przegranych", streak_stats["max_loss_streak"])
+                with s3:
+                    st.metric("Bieżąca seria", streak_stats["current_streak"])
+                with s4:
+                    label = "wygranych" if streak_stats["current_streak_type"] == "win" else "przegranych"
+                    st.metric("Typ serii", label)
+                st.plotly_chart(
+                    build_streak_chart(round_trips, streak_stats["streak_events"]),
+                    use_container_width=True,
+                )
+
+                trips_exit = classify_exit_strategy(round_trips)
+                st.markdown("### Porównanie strategii wyjścia")
+                st.caption(
+                    "Heurystyczna klasyfikacja: zysk >20%, stop-loss (≤-5%), "
+                    "time-based (≥90 dni bez powyższych), inne."
+                )
+                st.plotly_chart(build_exit_strategy_chart(trips_exit), use_container_width=True)
+
                 st.plotly_chart(
                     build_round_trip_pnl_chart(round_trips),
                     use_container_width=True,
@@ -736,4 +798,38 @@ with tab_dividends:
                 st.caption(
                     "ℹ️ Forward yield to prognoza na bazie ostatniej dywidendy — rzeczywiste "
                     "wypłaty mogą się różnić. Ex-date z przeszłości to wartość orientacyjna."
+                )
+
+                yield_cmp = build_dividend_yield_comparison(analyzed_div, currency)
+                if not yield_cmp.empty:
+                    st.markdown("#### Yield on cost vs forward yield")
+                    st.caption(
+                        "Yield on cost = roczna dywidenda / koszt pozycji. "
+                        "Forward yield = prognoza Yahoo na bazie bieżącej ceny."
+                    )
+                    st.plotly_chart(
+                        build_dividend_yield_comparison_chart(yield_cmp),
+                        use_container_width=True,
+                    )
+
+                st.markdown("#### Widok kalendarza ex-dividend")
+                cal_months = sorted(
+                    {
+                        pd.Timestamp(d).strftime("%Y-%m")
+                        for d in cal["ex_date"].dropna()
+                    }
+                )
+                if not cal_months:
+                    cal_months = [pd.Timestamp.now().strftime("%Y-%m")]
+                selected_month = st.selectbox(
+                    "Miesiąc",
+                    cal_months,
+                    index=len(cal_months) - 1,
+                    key="ex_div_month",
+                )
+                st.plotly_chart(
+                    build_ex_dividend_calendar_chart(
+                        cal, pd.Timestamp(f"{selected_month}-01")
+                    ),
+                    use_container_width=True,
                 )

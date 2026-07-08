@@ -30,6 +30,7 @@ def main() -> int:
         "core.timeline",
         "core.closed_analysis",
         "core.trade_analytics",
+        "core.trade_excursions",
         "core.cost_basis",
         "core.technicals",
         "core.watchlist",

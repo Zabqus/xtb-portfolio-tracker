@@ -222,3 +222,100 @@ def build_cumulative_dividends_chart(div: pd.DataFrame, currency: str) -> go.Fig
         height=360,
     )
     return style_figure(fig)
+
+
+def build_dividend_yield_comparison_chart(yield_df: pd.DataFrame) -> go.Figure:
+    """Słupki: yield on cost vs forward yield per ticker."""
+    if yield_df is None or yield_df.empty:
+        fig = go.Figure()
+        fig.update_layout(title="Brak danych yield on cost / forward")
+        return style_figure(fig)
+
+    df = yield_df.dropna(subset=["yield_on_cost_pct", "forward_yield_pct"]).copy()
+    if df.empty:
+        fig = go.Figure()
+        fig.update_layout(title="Brak pozycji z danymi dywidendowymi")
+        return style_figure(fig)
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            name="Yield on cost",
+            x=df["ticker_xtb"],
+            y=df["yield_on_cost_pct"],
+            marker_color="#9b59b6",
+            text=df["yield_on_cost_pct"].round(2),
+            textposition="outside",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            name="Forward yield",
+            x=df["ticker_xtb"],
+            y=df["forward_yield_pct"],
+            marker_color="#3498db",
+            text=df["forward_yield_pct"].round(2),
+            textposition="outside",
+        )
+    )
+    fig.update_layout(
+        title="Yield on cost vs forward yield (per ticker)",
+        xaxis_title="Ticker",
+        yaxis_title="Yield %",
+        barmode="group",
+        height=420,
+        legend=dict(orientation="h", y=1.08),
+    )
+    return style_figure(fig)
+
+
+def build_ex_dividend_calendar_chart(cal: pd.DataFrame, month: pd.Timestamp) -> go.Figure:
+    """Widok miesiąca — Gantt z datami ex-dividend."""
+    fig = go.Figure()
+    if cal is None or cal.empty or "ex_date" not in cal.columns:
+        fig.update_layout(title="Brak dat ex-dividend")
+        return style_figure(fig)
+
+    month_start = pd.Timestamp(month).replace(day=1).normalize()
+    month_end = (month_start + pd.offsets.MonthEnd(0)).normalize()
+
+    df = cal.dropna(subset=["ex_date"]).copy()
+    df["ex_date"] = pd.to_datetime(df["ex_date"], errors="coerce").dt.normalize()
+    df = df[(df["ex_date"] >= month_start) & (df["ex_date"] <= month_end)]
+    if df.empty:
+        fig.update_layout(
+            title=f"Kalendarz ex-dividend — {month_start.strftime('%B %Y')} (brak wypłat w tym miesiącu)"
+        )
+        return style_figure(fig)
+
+    df = df.sort_values("ex_date").reset_index(drop=True)
+    colors = ["#2ecc71" if u else "#95a5a6" for u in df.get("ex_upcoming", [True] * len(df))]
+
+    for idx, row in df.iterrows():
+        fig.add_trace(
+            go.Scatter(
+                x=[row["ex_date"], row["ex_date"] + pd.Timedelta(hours=20)],
+                y=[row["ticker_xtb"], row["ticker_xtb"]],
+                mode="lines",
+                line=dict(color=colors[idx], width=14),
+                hovertemplate=(
+                    f"{row['ticker_xtb']}<br>Ex-date: {row['ex_date'].strftime('%Y-%m-%d')}"
+                    f"<br>Yield: {row.get('yield_pct', 0):.2f}%<extra></extra>"
+                ),
+                showlegend=False,
+            )
+        )
+
+    fig.update_layout(
+        title=f"Kalendarz ex-dividend — {month_start.strftime('%B %Y')}",
+        xaxis=dict(
+            range=[month_start - pd.Timedelta(days=1), month_end + pd.Timedelta(days=1)],
+            tickformat="%d %b",
+            title="Data ex-dividend",
+        ),
+        yaxis=dict(title="", autorange="reversed"),
+        height=max(280, 60 + len(df) * 36),
+        margin=dict(l=80, r=20, t=60, b=40),
+        hovermode="closest",
+    )
+    return style_figure(fig)

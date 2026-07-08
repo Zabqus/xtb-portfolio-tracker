@@ -129,3 +129,61 @@ def build_dividend_calendar(
         currency=currency,
     )
     return table, summary
+
+
+def build_dividend_yield_comparison(
+    analyzed: pd.DataFrame,
+    currency: str,
+) -> pd.DataFrame:
+    """
+    Yield on cost vs forward yield per ticker (otwarte pozycje płacące dywidendę).
+
+    yield_on_cost = (roczna dywidenda na akcję × ilość) / koszt pozycji × 100
+    forward_yield = Yahoo dividendYield (jak w kalendarzu).
+    """
+    if analyzed is None or analyzed.empty:
+        return pd.DataFrame()
+
+    required = {"ticker_yahoo", "ticker_xtb", "quantity", "position_cost"}
+    if not required.issubset(analyzed.columns):
+        return pd.DataFrame()
+
+    valid = analyzed.dropna(subset=["ticker_yahoo", "position_cost"]).copy()
+    valid = valid[valid["position_cost"] > 0]
+    if valid.empty:
+        return pd.DataFrame()
+
+    tickers = tuple(sorted(valid["ticker_yahoo"].astype(str).unique()))
+    meta = fetch_dividend_meta(tickers)
+
+    rows: list[dict] = []
+    for _, row in valid.iterrows():
+        yahoo = str(row["ticker_yahoo"])
+        m = meta.get(yahoo, {})
+        dy = m.get("yield")
+        rate = m.get("rate")
+        if not dy or not rate:
+            continue
+        qty = float(row["quantity"])
+        cost = float(row["position_cost"])
+        annual_div = float(rate) * qty
+        yield_on_cost = annual_div / cost * 100 if cost > 0 else None
+        rows.append(
+            {
+                "ticker_xtb": row.get("ticker_xtb", yahoo),
+                "ticker_yahoo": yahoo,
+                "yield_on_cost_pct": yield_on_cost,
+                "forward_yield_pct": dy * 100,
+                "annual_income": cost * dy if dy else None,
+                "position_cost": cost,
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame()
+
+    return (
+        pd.DataFrame(rows)
+        .sort_values("yield_on_cost_pct", ascending=False)
+        .reset_index(drop=True)
+    )
