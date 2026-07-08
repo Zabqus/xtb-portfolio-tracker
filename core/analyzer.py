@@ -10,6 +10,25 @@ from core.currencies import convert_amount, fetch_rates_to_currency
 from core.market_data import fetch_last_prices
 
 
+def _normalize_market_price_units(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Korekta jednostek cen Yahoo dla LSE.
+
+    Dla tickerów `.L` Yahoo często zwraca cenę w GBp (pensach), podczas gdy
+    XTB zapisuje średni koszt pozycji w GBP.
+    """
+    if "ticker_yahoo" not in df.columns or "currency" not in df.columns or "market_price" not in df.columns:
+        return df
+    out = df.copy()
+    lse_mask = (
+        out["ticker_yahoo"].astype(str).str.upper().str.endswith(".L")
+        & out["currency"].astype(str).str.upper().eq("GBP")
+    )
+    if lse_mask.any():
+        out.loc[lse_mask, "market_price"] = out.loc[lse_mask, "market_price"] / 100.0
+    return out
+
+
 def analyze_portfolio(
     portfolio: pd.DataFrame,
     display_currency: str | None = None,
@@ -34,6 +53,7 @@ def analyze_portfolio(
     tickers_tuple = tuple(sorted(result["ticker_yahoo"].unique()))
     price_map = fetch_last_prices(tickers_tuple)
     result["market_price"] = result["ticker_yahoo"].map(price_map)
+    result = _normalize_market_price_units(result)
 
     result["cost_native"] = result["quantity"] * result["avg_price"]
     result["value_native"] = result["quantity"] * result["market_price"]

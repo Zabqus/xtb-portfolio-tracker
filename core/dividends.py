@@ -36,12 +36,23 @@ def parse_dividends(cash_ops: pd.DataFrame) -> pd.DataFrame:
     ticker = div["Ticker"] if "Ticker" in div.columns else pd.Series("—", index=div.index)
     comment = div["Comment"] if "Comment" in div.columns else pd.Series("", index=div.index)
 
+    currency = (
+        div["Currency"]
+        if "Currency" in div.columns
+        else (
+            div["account_currency"]
+            if "account_currency" in div.columns
+            else pd.Series(pd.NA, index=div.index)
+        )
+    )
+
     result = pd.DataFrame(
         {
             "date": div["date"],
             "year": div["year"].astype(int),
             "ticker_xtb": ticker.fillna("—").astype(str).str.strip().str.upper(),
             "amount": div["amount"],
+            "currency": currency.astype("string").str.upper(),
             "comment": comment.fillna("").astype(str),
         }
     )

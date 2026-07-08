@@ -56,7 +56,8 @@ def parse_cash_operations_trades(cash_ops: pd.DataFrame) -> pd.DataFrame:
             continue
 
         side, quantity, price = parsed
-        ticker_xtb = str(row["Ticker"]).strip().upper()
+        raw_ticker_xtb = str(row["Ticker"]).strip().upper()
+        ticker_xtb = raw_ticker_xtb
         account_label = row.get("account_label") if "account_label" in row.index else None
         if account_label is not None and pd.notna(account_label):
             label = str(account_label)
@@ -69,7 +70,7 @@ def parse_cash_operations_trades(cash_ops: pd.DataFrame) -> pd.DataFrame:
                 "trade_time": row["trade_time"],
                 "trade_date": row["trade_time"].normalize(),
                 "ticker_xtb": ticker_xtb,
-                "ticker_yahoo": map_ticker_to_yahoo(ticker_xtb),
+                "ticker_yahoo": map_ticker_to_yahoo(raw_ticker_xtb),
                 "side": side,
                 "quantity": quantity,
                 "price": price,

@@ -55,6 +55,8 @@ def _tag_cash_operations(df: pd.DataFrame | None, label: str) -> pd.DataFrame | 
         return df
     out = df.copy()
     out["account_label"] = label
+    if "account_currency" not in out.columns:
+        out["account_currency"] = label.split("-", 1)[0]
     return out
 
 
@@ -125,7 +127,12 @@ def merge_reports(reports: list[XTBReport]) -> XTBReport:
 
         open_parts.append(_tag_open_positions(report.open_positions, report, short))
         closed_parts.append(_tag_closed_positions(report.closed_positions, short))
-        cash_parts.append(_tag_cash_operations(report.cash_operations, short))
+        tagged_cash = _tag_cash_operations(report.cash_operations, short)
+        if tagged_cash is not None and not tagged_cash.empty:
+            tagged_cash["account_currency"] = report.account_currency
+            if report.account_number:
+                tagged_cash["account_number"] = report.account_number
+        cash_parts.append(tagged_cash)
 
     open_merged = pd.concat(open_parts, ignore_index=True)
     open_merged.attrs["account_currency"] = MULTI_ACCOUNT_CURRENCY
