@@ -212,3 +212,178 @@ def evaluate_signal(
         upside_pct=upside_pct,
         comment=comment,
     )
+
+
+def build_signal_matrix(results: list[SignalResult]) -> pd.DataFrame:
+    """
+    Macierz sygnałów (heatmapa) w układzie:
+    wiersze = tickery, kolumny = RSI / trend MA / konsensus / P&L / wynik końcowy.
+    """
+    if not results:
+        return pd.DataFrame(
+            columns=[
+                "ticker_xtb",
+                "RSI",
+                "trend_MA200",
+                "konsensus",
+                "P&L_%",  # bieżący ROI %
+                "score_tech",
+                "score_consensus",
+                "score_pl",
+                "score_total",
+                "signal",
+                "color",
+            ]
+        )
+
+    rows: list[dict] = []
+    for r in results:
+        rows.append(
+            {
+                "ticker_xtb": r.ticker_xtb,
+                "RSI": r.rsi,
+                "trend_MA200": r.trend_ma200,
+                "konsensus": r.rating,
+                "P&L_%": r.roi_pct,
+                "score_tech": r.technical_score,
+                "score_consensus": r.consensus_score,
+                "score_pl": r.pl_score,
+                "score_total": r.signal_score,
+                "signal": r.signal,
+                "color": r.color,
+            }
+        )
+    df = pd.DataFrame(rows)
+    # Kolejność kolumn pod heatmapę
+    cols = [
+        "ticker_xtb",
+        "RSI",
+        "trend_MA200",
+        "konsensus",
+        "P&L_%",
+        "score_tech",
+        "score_consensus",
+        "score_pl",
+        "score_total",
+        "signal",
+        "color",
+    ]
+    return df[cols]
+
+
+def build_stacked_components(results: list[SignalResult]) -> pd.DataFrame:
+    """
+    Dane pod wykres skumulowanych składowych sygnału (stacked bar 0–10).
+
+    Dla każdego tickera zwraca:
+    * technical_score
+    * consensus_score
+    * pl_score
+    * signal_score (suma 0–10)
+    """
+    if not results:
+        return pd.DataFrame(
+            columns=[
+                "ticker_xtb",
+                "technical_score",
+                "consensus_score",
+                "pl_score",
+                "signal_score",
+            ]
+        )
+
+    data = [
+        {
+            "ticker_xtb": r.ticker_xtb,
+            "technical_score": r.technical_score,
+            "consensus_score": r.consensus_score,
+            "pl_score": r.pl_score,
+            "signal_score": r.signal_score,
+        }
+        for r in results
+    ]
+    return pd.DataFrame(data)
+
+
+def interval_agreement_table(
+    scores_by_interval: dict[str, dict[str, float]],
+    *,
+    buy_threshold: float = 7.0,
+    sell_threshold: float = 4.0,
+) -> pd.DataFrame:
+    """
+    Tabela zgodności sygnałów między horyzontami (np. 3M / 6M / 1Y).
+
+    Parametr `scores_by_interval`:
+        {
+          "3M": {"AAPL": 8.1, "MSFT": 6.5, ...},
+          "6M": {"AAPL": 7.9, "MSFT": 5.0, ...},
+          "1Y": {"AAPL": 7.2, "MSFT": 4.2, ...},
+        }
+
+    Zwraca DataFrame:
+        ticker_xtb, score_3M, score_6M, score_1Y, zgoda_interwałów
+    gdzie zgoda_interwałów ∈ {"Spójny BUY", "Spójny SELL/HOLD", "Mieszany"}.
+    """
+    if not scores_by_interval:
+        return pd.DataFrame(
+            columns=[
+                "ticker_xtb",
+                "score_3M",
+                "score_6M",
+                "score_1Y",
+                "zgoda_interwałów",
+            ]
+        )
+
+    all_tickers: set[str] = set()
+    for interval_scores in scores_by_interval.values():
+        all_tickers.update(interval_scores.keys())
+
+    def _interval_label(interval_key: str) -> str:
+        key = interval_key.strip().upper()
+        if key in {"3M", "6M", "1Y"}:
+            return key
+        return interval_key
+
+    normalized_keys = {_interval_label(k): k for k in scores_by_interval.keys()}
+
+    rows: list[dict] = []
+    for ticker in sorted(all_tickers):
+        row: dict[str, float | str | None] = {"ticker_xtb": ticker}
+        interval_flags: list[str] = []
+
+        for label, original_key in normalized_keys.items():
+            col_name = f"score_{label}"
+            score = scores_by_interval.get(original_key, {}).get(ticker)
+            row[col_name] = score
+
+            if score is None or pd.isna(score):
+                continue
+            if score >= buy_threshold:
+                interval_flags.append("BUY")
+            elif score <= sell_threshold:
+                interval_flags.append("SELL")
+            else:
+                interval_flags.append("HOLD")
+
+        unique_flags = set(interval_flags)
+        if not interval_flags:
+            agreement = "Brak danych"
+        elif unique_flags == {"BUY"}:
+            agreement = "Spójny BUY"
+        elif unique_flags <= {"SELL", "HOLD"}:
+            agreement = "Spójny SELL/HOLD"
+        else:
+            agreement = "Mieszany"
+
+        row["zgoda_interwałów"] = agreement
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+
+    ordered_cols = ["ticker_xtb", "score_3M", "score_6M", "score_1Y", "zgoda_interwałów"]
+    for c in ordered_cols:
+        if c not in df.columns:
+            df[c] = None
+    return df[ordered_cols]

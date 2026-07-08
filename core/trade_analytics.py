@@ -172,3 +172,111 @@ def compute_trade_analytics(
         worst_trade_pnl=float(pnl_series.min()) if len(pnl_series) else 0.0,
     )
     return summary, round_trips
+
+
+def backtest_threshold_heuristic(
+    closed_or_round_trips: pd.DataFrame,
+    signal_scores: pd.Series,
+    *,
+    buy_threshold: float = 7.0,
+    sell_threshold: float = 4.0,
+) -> dict[str, float]:
+    """
+    Uproszczony backtest heurystyki:
+    „gdyby sprzedawać przy score <4 i kupować przy >7”
+    na zamkniętych pozycjach.
+
+    Założenia (celowo proste):
+    * analizujemy tylko zamknięte transakcje (round-tripy),
+    * dla każdej transakcji mamy przypisany wynik sygnału `signal_scores`
+      (w tej samej kolejności indexu, co `closed_or_round_trips`),
+    * BUY oznacza „strategia pozwalała na zajęcie pozycji”
+      (score ≥ buy_threshold),
+    * SELL/HOLD oznacza „strategia nie pozwalała na wejście”
+      (score < buy_threshold); SELL dodatkowo identyfikujemy,
+      gdy score <= sell_threshold, ale w tym uproszczeniu
+      sprowadzamy to do decyzji „nie wchodź”.
+
+    Zwraca słownik z metrykami:
+        * trades_total         – liczba wszystkich transakcji,
+        * trades_taken         – liczba transakcji, które strategia by wzięła,
+        * hit_rate_baseline    – win rate wszystkich transakcji,
+        * hit_rate_strategy    – win rate tylko „wziętych”,
+        * pnl_baseline         – suma P&L wszystkich,
+        * pnl_strategy         – suma P&L tylko „wziętych”.
+
+    Wymagane kolumny w `closed_or_round_trips`:
+        * 'realized_pnl' lub 'pnl' (zł / waluta konta).
+    """
+    if closed_or_round_trips is None or closed_or_round_trips.empty:
+        return {
+            "trades_total": 0,
+            "trades_taken": 0,
+            "hit_rate_baseline": 0.0,
+            "hit_rate_strategy": 0.0,
+            "pnl_baseline": 0.0,
+            "pnl_strategy": 0.0,
+        }
+
+    if signal_scores is None or signal_scores.empty:
+        return {
+            "trades_total": len(closed_or_round_trips),
+            "trades_taken": 0,
+            "hit_rate_baseline": 0.0,
+            "hit_rate_strategy": 0.0,
+            "pnl_baseline": 0.0,
+            "pnl_strategy": 0.0,
+        }
+
+    df = closed_or_round_trips.copy()
+    df = df.reset_index(drop=True)
+    scores = signal_scores.reset_index(drop=True)
+
+    if len(df) != len(scores):
+        # Bez 1:1 dopasowania nie ma sensu liczyć backtestu.
+        return {
+            "trades_total": len(df),
+            "trades_taken": 0,
+            "hit_rate_baseline": 0.0,
+            "hit_rate_strategy": 0.0,
+            "pnl_baseline": 0.0,
+            "pnl_strategy": 0.0,
+        }
+
+    if "realized_pnl" in df.columns:
+        pnl = df["realized_pnl"].astype(float)
+    elif "pnl" in df.columns:
+        pnl = df["pnl"].astype(float)
+    else:
+        return {
+            "trades_total": len(df),
+            "trades_taken": 0,
+            "hit_rate_baseline": 0.0,
+            "hit_rate_strategy": 0.0,
+            "pnl_baseline": 0.0,
+            "pnl_strategy": 0.0,
+        }
+
+    mask_taken = scores >= buy_threshold
+    baseline_wins = pnl > 0
+    strategy_wins = baseline_wins & mask_taken
+
+    trades_total = int(len(df))
+    trades_taken = int(mask_taken.sum())
+
+    hit_rate_baseline = float(baseline_wins.mean() * 100) if trades_total else 0.0
+    hit_rate_strategy = (
+        float(strategy_wins[mask_taken].mean() * 100) if trades_taken else 0.0
+    )
+
+    pnl_baseline = float(pnl.sum())
+    pnl_strategy = float(pnl[mask_taken].sum()) if trades_taken else 0.0
+
+    return {
+        "trades_total": trades_total,
+        "trades_taken": trades_taken,
+        "hit_rate_baseline": hit_rate_baseline,
+        "hit_rate_strategy": hit_rate_strategy,
+        "pnl_baseline": pnl_baseline,
+        "pnl_strategy": pnl_strategy,
+    }
