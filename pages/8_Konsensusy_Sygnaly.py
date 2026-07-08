@@ -3,6 +3,7 @@ Podstrona: konsensusy analityków i syntetyczne sygnały kup / trzymaj / sprzeda
 """
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from core.analyst_consensus import (
@@ -25,16 +26,29 @@ from core.signals import (
     SIGNAL_BUY,
     SIGNAL_HOLD,
     SIGNAL_SELL,
+    SIGNAL_PROFILES,
     build_signal_matrix,
     build_stacked_components,
+    build_action_ranking,
+    build_sanity_checks,
+    compute_confidence_score,
+    compute_signal_momentum,
     consensus_score,
     evaluate_signal,
+    evaluate_signal_profiled,
     interval_agreement_table,
     pl_score,
     technical_score,
 )
+from core.signal_snapshots import (
+    add_signal_snapshot,
+    detect_signal_alerts,
+    latest_signal_snapshot,
+    signal_snapshot_days_ago,
+)
 from core.technicals import fetch_technicals, latest_indicator_snapshot
-from core.trade_analytics import backtest_threshold_heuristic
+from core.trade_analytics import backtest_score_series, backtest_threshold_heuristic
+from core.risk_metrics import compute_position_risk_contribution
 from ui.chart_navigation import render_navigable_chart
 from ui.consensus_charts import (
     build_consensus_bullet_chart,
@@ -109,6 +123,31 @@ def _fetch_technical_scores(ticker_yahoo: str) -> tuple[float, float]:
     tech, _, _, _ = technical_score(snapshot)
     cons, _ = consensus_score(consensus, upside)
     return tech, cons
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _build_historical_score_series(ticker_yahoo: str, interval_label: str = "1Y") -> pd.Series:
+    """
+    Przybliżony historyczny score (0–10) z samej techniki:
+    score = technical(0–4) przeskalowane do 0–10.
+    """
+    tech_df = fetch_technicals(ticker_yahoo, interval_label)
+    if tech_df is None or tech_df.empty or "Date" not in tech_df.columns:
+        return pd.Series(dtype=float)
+    rows: list[tuple[pd.Timestamp, float]] = []
+    for _, r in tech_df.iterrows():
+        snapshot = {
+            "close": r.get("Close"),
+            "ma50": r.get("MA50"),
+            "ma200": r.get("MA200"),
+            "rsi": r.get("RSI14"),
+        }
+        tech, _, _, _ = technical_score(snapshot)
+        rows.append((pd.to_datetime(r.get("Date")), float(tech / 4.0 * 10.0)))
+    if not rows:
+        return pd.Series(dtype=float)
+    series = pd.Series(data=[v for _, v in rows], index=[d for d, _ in rows], name="score")
+    return series.dropna()
 
 
 def _upside(target: float | None, price: float | None) -> float | None:
@@ -387,6 +426,32 @@ with tab_consensus:
 # --- Zakładka 2: Sygnały ---
 with tab_signals:
     st.subheader("Sygnały syntetyczne (technika + konsensus + P&L)")
+    profile_name = st.selectbox(
+        "Profil decyzyjny",
+        options=list(SIGNAL_PROFILES.keys()),
+        index=1,
+        key="signals_profile_name",
+    )
+    profile = SIGNAL_PROFILES[profile_name]
+    whatif_col1, whatif_col2 = st.columns(2)
+    with whatif_col1:
+        buy_threshold = st.slider(
+            "What-if: próg BUY",
+            min_value=6.5,
+            max_value=8.0,
+            value=float(profile.buy_threshold),
+            step=0.1,
+            key="signals_buy_threshold_slider",
+        )
+    with whatif_col2:
+        sell_threshold = st.slider(
+            "What-if: próg SELL",
+            min_value=3.0,
+            max_value=5.0,
+            value=float(profile.sell_threshold),
+            step=0.1,
+            key="signals_sell_threshold_slider",
+        )
     interval_selected = st.segmented_control(
         "Interwał techniki dla bieżącego sygnału",
         options=["3M", "6M", "1Y"],
@@ -396,11 +461,12 @@ with tab_signals:
     interval_selected = interval_selected or "1Y"
     st.caption(
         "Wynik 0–10: technika (40%) + konsensus analityków (40%) + bieżący P&L (20%). "
-        f"Bieżący sygnał liczony dla interwału: **{interval_selected}**."
+        f"Bieżący sygnał liczony dla interwału: **{interval_selected}**; profil: **{profile_name}**."
     )
 
     signal_rows: list[dict] = []
     signal_results = []
+    signal_meta: dict[str, dict] = {}
     interval_scores: dict[str, dict[str, float]] = {"3M": {}, "6M": {}, "1Y": {}}
     progress2 = st.progress(0.0, text="Liczenie sygnałów…")
     for i, (_, pos) in enumerate(analyzed.iterrows(), start=1):
@@ -426,25 +492,38 @@ with tab_signals:
             st.warning(f"Brak konsensusu dla {ticker_xtb} — użyto wartości neutralnych.")
 
         upside = _upside(bundle_target, market_price)
-        result = evaluate_signal(
+        result = evaluate_signal_profiled(
             ticker_xtb=ticker_xtb,
             snapshot=snapshot,
             consensus=consensus,
             upside_pct=upside,
             roi_pct=roi_val,
+            profile=profile,
         )
         signal_results.append(result)
+        signal_meta[ticker_xtb] = {
+            "analyst_opinions": (
+                int(consensus.number_of_analyst_opinions)
+                if consensus and consensus.number_of_analyst_opinions is not None
+                else 0
+            ),
+            "has_rsi": snapshot.get("rsi") is not None,
+            "has_ma50": snapshot.get("ma50") is not None,
+            "has_ma200": snapshot.get("ma200") is not None,
+            "ticker_yahoo": ticker_yahoo,
+        }
 
         for interval_label in ("3M", "6M", "1Y"):
             try:
                 interval_df = fetch_technicals(ticker_yahoo, interval_label)
                 interval_snapshot = latest_indicator_snapshot(interval_df)
-                interval_result = evaluate_signal(
+                interval_result = evaluate_signal_profiled(
                     ticker_xtb=ticker_xtb,
                     snapshot=interval_snapshot,
                     consensus=consensus,
                     upside_pct=upside,
                     roi_pct=roi_val,
+                    profile=profile,
                 )
                 interval_scores[interval_label][ticker_xtb] = float(interval_result.signal_score)
             except Exception:
@@ -487,6 +566,16 @@ with tab_signals:
         st.metric("🔴 Rozważ sprzedaż", n_sell)
     with m4:
         st.metric("Średni wynik portfela", f"{avg_score:.1f}/10")
+
+    if signal_results:
+        score_values = pd.Series([r.signal_score for r in signal_results], dtype=float)
+        whatif_buy = int((score_values >= buy_threshold).sum())
+        whatif_sell = int((score_values <= sell_threshold).sum())
+        whatif_hold = int(len(score_values) - whatif_buy - whatif_sell)
+        st.caption(
+            f"What-if progi BUY>{buy_threshold:.1f} / SELL<={sell_threshold:.1f}: "
+            f"BUY={whatif_buy}, HOLD={whatif_hold}, SELL={whatif_sell}."
+        )
 
     def _highlight_signal(val: str) -> str:
         colors = {
@@ -599,17 +688,187 @@ with tab_signals:
             },
         )
 
+    agreement_map = (
+        dict(zip(agreement_df["ticker_xtb"], agreement_df["zgoda_interwałów"]))
+        if not agreement_df.empty
+        else {}
+    )
+    signal_matrix_raw = build_signal_matrix(signal_results)
+    current_signal_state = signal_matrix_raw.copy()
+    if not current_signal_state.empty:
+        total_mv = float(analyzed["market_value"].sum()) if "market_value" in analyzed.columns else 0.0
+        weight_map = (
+            dict(zip(analyzed["ticker_xtb"], analyzed["market_value"] / total_mv * 100))
+            if total_mv > 0
+            else {}
+        )
+        current_signal_state["interval_agreement"] = current_signal_state["ticker_xtb"].map(agreement_map)
+        current_signal_state["weight_pct"] = current_signal_state["ticker_xtb"].map(weight_map)
+        current_signal_state["delta_7d"] = None
+        current_signal_state["delta_30d"] = None
+        current_signal_state["trend_arrow"] = "→"
+        current_signal_state["confidence"] = 0.0
+
+        snap_7d = signal_snapshot_days_ago(7)
+        snap_30d = signal_snapshot_days_ago(30)
+        for idx, row in current_signal_state.iterrows():
+            ticker = str(row["ticker_xtb"])
+            mom = compute_signal_momentum(
+                ticker_xtb=ticker,
+                current_score=float(row.get("score_total") or 0),
+                snapshot_7d=snap_7d,
+                snapshot_30d=snap_30d,
+            )
+            current_signal_state.at[idx, "delta_7d"] = mom["delta_7d"]
+            current_signal_state.at[idx, "delta_30d"] = mom["delta_30d"]
+            current_signal_state.at[idx, "trend_arrow"] = mom["trend_arrow"]
+
+            meta = signal_meta.get(ticker, {})
+            conf = compute_confidence_score(
+                analyst_opinions=meta.get("analyst_opinions"),
+                has_rsi=bool(meta.get("has_rsi")),
+                has_ma50=bool(meta.get("has_ma50")),
+                has_ma200=bool(meta.get("has_ma200")),
+                interval_agreement=current_signal_state.at[idx, "interval_agreement"],
+            )
+            current_signal_state.at[idx, "confidence"] = conf
+
     st.divider()
-    st.subheader("Backtest heurystyki sygnału (uproszczony)")
+    st.subheader("Pewność sygnału i momentum (7d / 30d)")
+    if not current_signal_state.empty:
+        confidence_view = current_signal_state[
+            [
+                "ticker_xtb",
+                "score_total",
+                "confidence",
+                "delta_7d",
+                "delta_30d",
+                "trend_arrow",
+                "interval_agreement",
+            ]
+        ].rename(
+            columns={
+                "ticker_xtb": "Ticker",
+                "score_total": "Wynik",
+                "confidence": "Pewność",
+                "delta_7d": "Δ 7d",
+                "delta_30d": "Δ 30d",
+                "trend_arrow": "Trend",
+                "interval_agreement": "Zgoda interwałów",
+            }
+        )
+        st.dataframe(
+            confidence_view,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Wynik": st.column_config.NumberColumn("Wynik", format="%.1f"),
+                "Pewność": st.column_config.ProgressColumn("Pewność", min_value=0, max_value=100, format="%.0f"),
+                "Δ 7d": st.column_config.NumberColumn("Δ 7d", format="%+.2f"),
+                "Δ 30d": st.column_config.NumberColumn("Δ 30d", format="%+.2f"),
+            },
+        )
+
+    snap_col1, snap_col2 = st.columns([3, 1])
+    previous_signal_snapshot = latest_signal_snapshot()
+    with snap_col1:
+        if previous_signal_snapshot:
+            st.caption(f"Ostatni snapshot sygnałów: **{previous_signal_snapshot.get('date', '—')}**")
+        else:
+            st.caption("Zapisz snapshot sygnałów, aby uruchomić pełne alerty i momentum.")
+    with snap_col2:
+        if st.button("Zapisz snapshot sygnałów", use_container_width=True):
+            _, msg = add_signal_snapshot(current_signal_state)
+            st.success(msg)
+            st.rerun()
+
+    st.divider()
+    st.subheader("Alerty sygnałowe")
+    signal_alerts = detect_signal_alerts(current_signal_state, previous_signal_snapshot)
+    if signal_alerts is not None and not signal_alerts.empty:
+        st.dataframe(signal_alerts, use_container_width=True, hide_index=True)
+    else:
+        st.info("Brak nowych alertów sygnałowych względem ostatniego snapshotu.")
+
+    st.divider()
+    st.subheader("Ranking: co zrobić dziś (Top 5)")
+    ranking_df = build_action_ranking(current_signal_state, top_n=5)
+    if ranking_df is not None and not ranking_df.empty:
+        ranking_view = ranking_df[
+            ["ticker_xtb", "signal", "score_total", "delta_7d", "weight_pct", "interval_agreement", "urgency"]
+        ].rename(
+            columns={
+                "ticker_xtb": "Ticker",
+                "signal": "Sygnał",
+                "score_total": "Wynik",
+                "delta_7d": "Δ 7d",
+                "weight_pct": "Waga %",
+                "interval_agreement": "Zgoda interwałów",
+                "urgency": "Priorytet",
+            }
+        )
+        st.dataframe(
+            ranking_view,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Wynik": st.column_config.NumberColumn("Wynik", format="%.1f"),
+                "Δ 7d": st.column_config.NumberColumn("Δ 7d", format="%+.2f"),
+                "Waga %": st.column_config.NumberColumn("Waga %", format="%.2f"),
+                "Priorytet": st.column_config.ProgressColumn("Priorytet", min_value=0, max_value=20, format="%.1f"),
+            },
+        )
+
+    st.divider()
+    st.subheader("Kontrybucja do ryzyka portfela")
+    risk_df = compute_position_risk_contribution(analyzed, period="1Y")
+    if risk_df is not None and not risk_df.empty:
+        st.dataframe(
+            risk_df.rename(
+                columns={
+                    "ticker_xtb": "Ticker",
+                    "weight_pct": "Waga %",
+                    "volatility_pct": "Zmienność %",
+                    "avg_corr": "Śr. korelacja",
+                    "risk_contribution_pct": "Udział ryzyka %",
+                }
+            )[["Ticker", "Waga %", "Zmienność %", "Śr. korelacja", "Udział ryzyka %"]],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Waga %": st.column_config.NumberColumn("Waga %", format="%.2f"),
+                "Zmienność %": st.column_config.NumberColumn("Zmienność %", format="%.2f"),
+                "Śr. korelacja": st.column_config.NumberColumn("Śr. korelacja", format="%.2f"),
+                "Udział ryzyka %": st.column_config.ProgressColumn("Udział ryzyka %", min_value=0, max_value=100, format="%.1f"),
+            },
+        )
+    else:
+        st.info("Za mało danych cenowych, aby policzyć kontrybucję ryzyka.")
+
+    st.divider()
+    st.subheader("Sanity checks / anty-sygnały")
+    sanity_df = build_sanity_checks(current_signal_state)
+    if sanity_df is not None and not sanity_df.empty:
+        st.dataframe(sanity_df, use_container_width=True, hide_index=True)
+    else:
+        st.success("Brak wykrytych konfliktów anty-sygnałowych.")
+
+    st.divider()
+    st.subheader("Backtest heurystyki sygnału")
     st.caption(
-        "Symulacja historyczna na zamkniętych transakcjach: wejście tylko gdy score > 7, "
-        "a score < 4 traktowany jako sygnał unikania pozycji."
+        "What-if progów BUY/SELL działa zarówno dla backtestu uproszczonego (zamknięte pozycje), "
+        "jak i rekonstrukcji dziennej (equity curve) dla pojedynczego tickera."
     )
     closed = report.closed_positions if report is not None else None
     if closed is not None and not closed.empty and "ticker_xtb" in closed.columns:
         score_map = {r.ticker_xtb: r.signal_score for r in signal_results}
         close_scores = closed["ticker_xtb"].map(score_map)
-        bt = backtest_threshold_heuristic(closed, close_scores, buy_threshold=7.0, sell_threshold=4.0)
+        bt = backtest_threshold_heuristic(
+            closed,
+            close_scores,
+            buy_threshold=float(buy_threshold),
+            sell_threshold=float(sell_threshold),
+        )
 
         b1, b2, b3, b4 = st.columns(4)
         with b1:
@@ -626,13 +885,80 @@ with tab_signals:
             st.metric(f"P&L benchmark ({currency})", f"{bt['pnl_baseline']:+.2f}")
         with c2:
             st.metric(f"P&L strategia ({currency})", f"{bt['pnl_strategy']:+.2f}")
-
-        st.caption(
-            "Uwaga: backtest mapuje bieżący score tickera do historycznych zamknięć "
-            "(przybliżenie bez rekonstrukcji sygnału dzień-po-dniu)."
-        )
     else:
-        st.info("Brak danych `Closed Positions` — backtest wymaga zamkniętych transakcji.")
+        st.info("Brak danych `Closed Positions` — backtest uproszczony wymaga zamkniętych transakcji.")
+
+    st.markdown("**Backtest krok 2: rekonstrukcja dzienna score i equity curve**")
+    ticker_options = analyzed["ticker_xtb"].dropna().tolist()
+    if ticker_options:
+        selected_ticker = st.selectbox("Drill-down ticker", ticker_options, key="signals_drilldown_ticker")
+        ticker_row = analyzed.loc[analyzed["ticker_xtb"] == selected_ticker].iloc[0]
+        ticker_yahoo = ticker_row["ticker_yahoo"]
+        hist_df = fetch_technicals(ticker_yahoo, "1Y")
+        score_series = _build_historical_score_series(ticker_yahoo, "1Y")
+        bt_daily = backtest_score_series(
+            hist_df,
+            score_series,
+            buy_threshold=float(buy_threshold),
+            sell_threshold=float(sell_threshold),
+        )
+        if bt_daily is not None and not bt_daily.empty:
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=bt_daily["Date"],
+                    y=bt_daily["equity_buy_hold"],
+                    mode="lines",
+                    name="Buy & Hold",
+                    line=dict(color="#64748B"),
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=bt_daily["Date"],
+                    y=bt_daily["equity_strategy"],
+                    mode="lines",
+                    name="Strategia sygnałowa",
+                    line=dict(color="#2563EB"),
+                )
+            )
+            fig.update_layout(
+                title=f"Equity curve — {selected_ticker} (1Y)",
+                xaxis_title="Data",
+                yaxis_title="Kapitał (start=1.0)",
+                height=360,
+                margin=dict(t=56),
+            )
+            st.plotly_chart(fig, use_container_width=True, key="signals_bt_daily_curve")
+        else:
+            st.info("Brak wystarczających danych do rekonstrukcji dziennej dla wybranego tickera.")
+
+        st.markdown("**Drill-down: szczegóły tickera**")
+        ticker_state = current_signal_state[current_signal_state["ticker_xtb"] == selected_ticker]
+        if not ticker_state.empty:
+            row = ticker_state.iloc[0]
+            d1, d2, d3, d4 = st.columns(4)
+            with d1:
+                st.metric("Wynik", f"{float(row.get('score_total') or 0):.1f}/10")
+            with d2:
+                st.metric("Pewność", f"{float(row.get('confidence') or 0):.0f}/100")
+            with d3:
+                st.metric("Δ 7d", "—" if pd.isna(row.get("delta_7d")) else f"{float(row.get('delta_7d')):+.2f}")
+            with d4:
+                st.metric("Zgoda interwałów", str(row.get("interval_agreement") or "—"))
+
+            irow = agreement_df[agreement_df["ticker_xtb"] == selected_ticker]
+            if not irow.empty:
+                iv = irow.iloc[0]
+                s3 = iv.get("score_3M")
+                s6 = iv.get("score_6M")
+                s1 = iv.get("score_1Y")
+                st.caption(
+                    "Interwały: "
+                    f"3M={f'{float(s3):.1f}' if s3 is not None and not pd.isna(s3) else '—'} / "
+                    f"6M={f'{float(s6):.1f}' if s6 is not None and not pd.isna(s6) else '—'} / "
+                    f"1Y={f'{float(s1):.1f}' if s1 is not None and not pd.isna(s1) else '—'}"
+                )
 
     st.info(
         "ℹ️ Sygnały są heurystykami pomocniczymi, nie stanowią porady inwestycyjnej."

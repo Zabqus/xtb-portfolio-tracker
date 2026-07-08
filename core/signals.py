@@ -46,6 +46,44 @@ class SignalResult:
     comment: str
 
 
+@dataclass(frozen=True)
+class SignalProfile:
+    name: str
+    buy_threshold: float
+    sell_threshold: float
+    weight_tech: float
+    weight_consensus: float
+    weight_pl: float
+
+
+SIGNAL_PROFILES: dict[str, SignalProfile] = {
+    "Defensywny": SignalProfile(
+        name="Defensywny",
+        buy_threshold=7.5,
+        sell_threshold=4.5,
+        weight_tech=0.50,
+        weight_consensus=0.35,
+        weight_pl=0.15,
+    ),
+    "Zbalansowany": SignalProfile(
+        name="Zbalansowany",
+        buy_threshold=7.0,
+        sell_threshold=4.0,
+        weight_tech=0.40,
+        weight_consensus=0.40,
+        weight_pl=0.20,
+    ),
+    "Agresywny": SignalProfile(
+        name="Agresywny",
+        buy_threshold=6.5,
+        sell_threshold=3.5,
+        weight_tech=0.35,
+        weight_consensus=0.40,
+        weight_pl=0.25,
+    ),
+}
+
+
 def _normalize(raw: float, raw_max: float, target_max: float) -> float:
     if raw_max <= 0:
         return 0.0
@@ -155,6 +193,20 @@ def signal_from_score(score: float) -> tuple[str, str]:
     return SIGNAL_SELL, SIGNAL_COLORS[SIGNAL_SELL]
 
 
+def signal_from_score_thresholds(
+    score: float,
+    *,
+    buy_threshold: float,
+    sell_threshold: float,
+) -> tuple[str, str]:
+    """Mapuje score na sygnał przy konfigurowalnych progach."""
+    if score >= buy_threshold:
+        return SIGNAL_BUY, SIGNAL_COLORS[SIGNAL_BUY]
+    if score > sell_threshold:
+        return SIGNAL_HOLD, SIGNAL_COLORS[SIGNAL_HOLD]
+    return SIGNAL_SELL, SIGNAL_COLORS[SIGNAL_SELL]
+
+
 def _build_comment(
     signal: str,
     trend: str,
@@ -195,6 +247,51 @@ def evaluate_signal(
     pl = pl_score(roi_pct)
     total = tech + cons + pl
     signal, color = signal_from_score(total)
+    comment = _build_comment(signal, trend, rsi, rating, upside_pct, roi_pct)
+
+    return SignalResult(
+        ticker_xtb=ticker_xtb,
+        roi_pct=roi_pct,
+        technical_score=round(tech, 2),
+        consensus_score=round(cons, 2),
+        pl_score=round(pl, 2),
+        signal_score=round(total, 1),
+        signal=signal,
+        color=color,
+        trend_ma200=trend,
+        rsi=rsi,
+        rating=rating,
+        upside_pct=upside_pct,
+        comment=comment,
+    )
+
+
+def evaluate_signal_profiled(
+    ticker_xtb: str,
+    snapshot: dict,
+    consensus: AnalystConsensus | None,
+    upside_pct: float | None,
+    roi_pct: float | None,
+    profile: SignalProfile,
+) -> SignalResult:
+    """
+    Wersja evaluate_signal z wagami/progami zależnymi od profilu decyzyjnego.
+    """
+    tech, trend, _, rsi = technical_score(snapshot)
+    cons, rating = consensus_score(consensus, upside_pct)
+    pl = pl_score(roi_pct)
+
+    w_sum = max(profile.weight_tech + profile.weight_consensus + profile.weight_pl, 1e-9)
+    total = (
+        (tech / 4.0) * profile.weight_tech
+        + (cons / 4.0) * profile.weight_consensus
+        + (pl / 2.0) * profile.weight_pl
+    ) / w_sum * 10.0
+    signal, color = signal_from_score_thresholds(
+        total,
+        buy_threshold=profile.buy_threshold,
+        sell_threshold=profile.sell_threshold,
+    )
     comment = _build_comment(signal, trend, rsi, rating, upside_pct, roi_pct)
 
     return SignalResult(
@@ -387,3 +484,147 @@ def interval_agreement_table(
         if c not in df.columns:
             df[c] = None
     return df[ordered_cols]
+
+
+def compute_confidence_score(
+    *,
+    analyst_opinions: int | None,
+    has_rsi: bool,
+    has_ma50: bool,
+    has_ma200: bool,
+    interval_agreement: str | None,
+) -> float:
+    """
+    Pewność sygnału 0–100.
+    Składniki: jakość konsensusu, kompletność techniki, spójność interwałów.
+    """
+    opinions = int(analyst_opinions or 0)
+    if opinions >= 20:
+        analyst_component = 40.0
+    elif opinions >= 10:
+        analyst_component = 30.0
+    elif opinions >= 5:
+        analyst_component = 20.0
+    elif opinions > 0:
+        analyst_component = 10.0
+    else:
+        analyst_component = 0.0
+
+    tech_component = (
+        (10.0 if has_rsi else 0.0)
+        + (15.0 if has_ma50 else 0.0)
+        + (15.0 if has_ma200 else 0.0)
+    )
+
+    agreement = str(interval_agreement or "").strip()
+    agreement_component_map = {
+        "Spójny BUY": 20.0,
+        "Spójny SELL/HOLD": 16.0,
+        "Mieszany": 8.0,
+        "Brak danych": 2.0,
+    }
+    agreement_component = agreement_component_map.get(agreement, 6.0)
+
+    return round(min(100.0, analyst_component + tech_component + agreement_component), 1)
+
+
+def compute_signal_momentum(
+    ticker_xtb: str,
+    current_score: float,
+    snapshot_7d: dict | None,
+    snapshot_30d: dict | None,
+) -> dict[str, float | str | None]:
+    """Zmiana score względem snapshotu sprzed 7 / 30 dni."""
+    s7 = None
+    s30 = None
+    if snapshot_7d:
+        s7 = (snapshot_7d.get("positions") or {}).get(ticker_xtb, {}).get("score_total")
+    if snapshot_30d:
+        s30 = (snapshot_30d.get("positions") or {}).get(ticker_xtb, {}).get("score_total")
+
+    d7 = (float(current_score) - float(s7)) if s7 is not None and not pd.isna(s7) else None
+    d30 = (float(current_score) - float(s30)) if s30 is not None and not pd.isna(s30) else None
+
+    trend = "→"
+    if d7 is not None and d30 is not None:
+        if d7 > 0 and d30 > 0:
+            trend = "↑"
+        elif d7 < 0 and d30 < 0:
+            trend = "↓"
+    elif d7 is not None:
+        trend = "↑" if d7 > 0 else ("↓" if d7 < 0 else "→")
+
+    return {
+        "delta_7d": round(d7, 2) if d7 is not None else None,
+        "delta_30d": round(d30, 2) if d30 is not None else None,
+        "trend_arrow": trend,
+    }
+
+
+def build_action_ranking(
+    signal_df: pd.DataFrame,
+    *,
+    top_n: int = 5,
+) -> pd.DataFrame:
+    """
+    Ranking „co zrobić dziś”: największe zmiany + czerwone sygnały z wysoką wagą.
+    Oczekuje kolumn: ticker_xtb, score_total, signal, weight_pct, delta_7d, interval_agreement.
+    """
+    if signal_df is None or signal_df.empty:
+        return pd.DataFrame()
+    df = signal_df.copy()
+    for col in ("weight_pct", "delta_7d", "score_total"):
+        if col not in df.columns:
+            df[col] = 0.0
+    if "signal" not in df.columns:
+        df["signal"] = SIGNAL_HOLD
+    if "interval_agreement" not in df.columns:
+        df["interval_agreement"] = "Brak danych"
+
+    df["urgency"] = (
+        df["delta_7d"].abs().fillna(0) * 1.8
+        + df["weight_pct"].fillna(0) * 0.12
+        + (df["signal"] == SIGNAL_SELL).astype(float) * 3.0
+        + (df["interval_agreement"] == "Mieszany").astype(float) * 2.0
+    )
+    ranked = df.sort_values("urgency", ascending=False).head(top_n)
+    return ranked
+
+
+def build_sanity_checks(signal_df: pd.DataFrame) -> pd.DataFrame:
+    """Wykrywa konflikty typu 'anty-sygnały'."""
+    if signal_df is None or signal_df.empty:
+        return pd.DataFrame(columns=["ticker_xtb", "issue", "severity"])
+    rows: list[dict[str, str]] = []
+    for _, r in signal_df.iterrows():
+        ticker = str(r.get("ticker_xtb") or "")
+        tech = float(r.get("score_tech", 0) or 0)
+        cons = float(r.get("score_consensus", 0) or 0)
+        total = float(r.get("score_total", 0) or 0)
+        rsi = r.get("RSI")
+
+        if cons >= 3.2 and tech <= 1.2:
+            rows.append(
+                {
+                    "ticker_xtb": ticker,
+                    "issue": "Bardzo dobry konsensus przy słabej technice",
+                    "severity": "medium",
+                }
+            )
+        if total >= 7.2 and rsi is not None and not pd.isna(rsi) and float(rsi) >= 75:
+            rows.append(
+                {
+                    "ticker_xtb": ticker,
+                    "issue": "Wysoki score przy ekstremalnie wysokim RSI",
+                    "severity": "high",
+                }
+            )
+        if total <= 3.8 and rsi is not None and not pd.isna(rsi) and float(rsi) <= 28:
+            rows.append(
+                {
+                    "ticker_xtb": ticker,
+                    "issue": "Niski score mimo silnego wyprzedania RSI",
+                    "severity": "low",
+                }
+            )
+    return pd.DataFrame(rows)

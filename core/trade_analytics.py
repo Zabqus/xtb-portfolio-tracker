@@ -280,3 +280,61 @@ def backtest_threshold_heuristic(
         "pnl_baseline": pnl_baseline,
         "pnl_strategy": pnl_strategy,
     }
+
+
+def backtest_score_series(
+    history_df: pd.DataFrame,
+    score_series: pd.Series,
+    *,
+    buy_threshold: float = 7.0,
+    sell_threshold: float = 4.0,
+) -> pd.DataFrame:
+    """
+    Backtest dzienny (krok 2): equity curve strategii sygnałowej vs buy&hold.
+
+    Wejście:
+    - history_df z kolumną `Close`
+    - score_series (score 0–10) o tym samym indeksie czasu
+
+    Reguła:
+    - jeśli score >= buy_threshold -> pozycja = 1
+    - jeśli score <= sell_threshold -> pozycja = 0
+    - w przeciwnym razie utrzymanie poprzedniego stanu.
+    """
+    if history_df is None or history_df.empty or "Close" not in history_df.columns:
+        return pd.DataFrame()
+    if score_series is None or score_series.empty:
+        return pd.DataFrame()
+
+    df = history_df.copy()
+    if "Date" in df.columns:
+        df = df.set_index("Date")
+    df = df.sort_index()
+    close = pd.to_numeric(df["Close"], errors="coerce").dropna()
+    if close.empty:
+        return pd.DataFrame()
+
+    scores = pd.to_numeric(score_series, errors="coerce")
+    scores.index = pd.to_datetime(scores.index)
+    scores = scores.sort_index()
+
+    merged = pd.DataFrame({"Close": close}).join(scores.rename("score"), how="inner").dropna()
+    if merged.empty or len(merged) < 3:
+        return pd.DataFrame()
+
+    position: list[int] = []
+    state = 0
+    for score in merged["score"]:
+        if float(score) >= buy_threshold:
+            state = 1
+        elif float(score) <= sell_threshold:
+            state = 0
+        position.append(state)
+    merged["position"] = position
+
+    merged["ret"] = merged["Close"].pct_change().fillna(0.0)
+    merged["ret_strategy"] = merged["ret"] * merged["position"].shift(1).fillna(0.0)
+    merged["equity_buy_hold"] = (1.0 + merged["ret"]).cumprod()
+    merged["equity_strategy"] = (1.0 + merged["ret_strategy"]).cumprod()
+    merged["active_days"] = merged["position"].rolling(5, min_periods=1).mean()
+    return merged.reset_index().rename(columns={"index": "Date"})

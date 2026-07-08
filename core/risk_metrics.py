@@ -241,3 +241,80 @@ def high_correlation_pairs(
             if pd.notna(value) and value >= threshold:
                 pairs.append((cols[i], cols[j], float(value)))
     return sorted(pairs, key=lambda x: x[2], reverse=True)
+
+
+def compute_position_risk_contribution(
+    analyzed: pd.DataFrame,
+    *,
+    period: str = "1Y",
+) -> pd.DataFrame:
+    """
+    Przybliżona kontrybucja do ryzyka pozycji:
+    waga_portfela * zmienność_roczna * średnia_korelacja.
+    """
+    if analyzed is None or analyzed.empty:
+        return pd.DataFrame()
+    if period not in PERIOD_OPTIONS:
+        period = "1Y"
+
+    base = analyzed.dropna(subset=["ticker_yahoo", "ticker_xtb", "market_value"]).copy()
+    if base.empty:
+        return pd.DataFrame()
+
+    total_value = float(base["market_value"].sum())
+    if total_value <= 0:
+        return pd.DataFrame()
+    base["weight_pct"] = base["market_value"].astype(float) / total_value * 100.0
+
+    prices: dict[str, pd.Series] = {}
+    for _, row in base.iterrows():
+        ticker = str(row["ticker_yahoo"])
+        try:
+            hist = fetch_price_history(ticker, period)
+        except Exception:
+            continue
+        if hist is None or hist.empty or "Close" not in hist.columns:
+            continue
+        series = hist.set_index("Date")["Close"] if "Date" in hist.columns else hist["Close"]
+        prices[ticker] = series
+
+    if len(prices) < 2:
+        return pd.DataFrame()
+
+    price_df = pd.DataFrame(prices).dropna()
+    if price_df.empty or len(price_df) < 20:
+        return pd.DataFrame()
+
+    rets = price_df.pct_change().dropna()
+    corr = rets.corr()
+    vols = rets.std() * np.sqrt(TRADING_DAYS)
+
+    rows: list[dict] = []
+    for _, row in base.iterrows():
+        ticker_y = str(row["ticker_yahoo"])
+        if ticker_y not in vols.index or ticker_y not in corr.index:
+            continue
+        avg_corr = float(corr[ticker_y].drop(labels=[ticker_y], errors="ignore").mean())
+        vol = float(vols[ticker_y] * 100)
+        weight = float(row["weight_pct"])
+        contrib = max(0.0, weight * vol * max(0.0, avg_corr))
+        rows.append(
+            {
+                "ticker_xtb": row["ticker_xtb"],
+                "ticker_yahoo": ticker_y,
+                "weight_pct": weight,
+                "volatility_pct": vol,
+                "avg_corr": avg_corr,
+                "risk_contribution": contrib,
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame()
+    out = pd.DataFrame(rows).sort_values("risk_contribution", ascending=False)
+    total = float(out["risk_contribution"].sum())
+    if total > 0:
+        out["risk_contribution_pct"] = out["risk_contribution"] / total * 100.0
+    else:
+        out["risk_contribution_pct"] = 0.0
+    return out.reset_index(drop=True)
