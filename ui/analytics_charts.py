@@ -424,3 +424,181 @@ def build_round_trip_pnl_chart(round_trips: pd.DataFrame) -> go.Figure:
     )
     fig.add_hline(y=0, line_dash="dash", line_color=reference_line_color())
     return style_figure(fig)
+
+
+def build_rolling_metrics_chart(rolling_df: pd.DataFrame) -> go.Figure:
+    """Rolling win rate i profit factor dla okien 30/50 transakcji."""
+    if rolling_df is None or rolling_df.empty:
+        fig = go.Figure()
+        fig.update_layout(title="Brak danych rolling metrics")
+        return style_figure(fig)
+
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        subplot_titles=("Rolling Win Rate %", "Rolling Profit Factor"),
+        vertical_spacing=0.12,
+    )
+    for w, color in ((30, "#4a9eff"), (50, "#9b59b6")):
+        wr_col = f"win_rate_{w}"
+        pf_col = f"profit_factor_{w}"
+        if wr_col in rolling_df.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=rolling_df["trade_no"],
+                    y=rolling_df[wr_col],
+                    mode="lines",
+                    name=f"WinRate {w}",
+                    line=dict(color=color),
+                ),
+                row=1,
+                col=1,
+            )
+        if pf_col in rolling_df.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=rolling_df["trade_no"],
+                    y=rolling_df[pf_col],
+                    mode="lines",
+                    name=f"PF {w}",
+                    line=dict(color=color, dash="dash"),
+                ),
+                row=2,
+                col=1,
+            )
+    fig.add_hline(y=50, line_dash="dot", line_color=reference_line_color(), row=1, col=1)
+    fig.add_hline(y=1, line_dash="dot", line_color=reference_line_color(), row=2, col=1)
+    fig.update_xaxes(title_text="Numer transakcji", row=2, col=1)
+    fig.update_yaxes(title_text="Win rate %", row=1, col=1)
+    fig.update_yaxes(title_text="PF", row=2, col=1)
+    fig.update_layout(height=520, title="Rolling forma tradera (30/50 trade)")
+    return style_figure(fig)
+
+
+def build_trade_heatmap_chart(
+    heatmap_df: pd.DataFrame,
+    title: str,
+    x_title: str,
+    y_title: str,
+) -> go.Figure:
+    """Uniwersalny heatmap P&L."""
+    if heatmap_df is None or heatmap_df.empty:
+        fig = go.Figure()
+        fig.update_layout(title=f"{title} — brak danych")
+        return style_figure(fig)
+
+    fig = go.Figure(
+        data=[
+            go.Heatmap(
+                z=heatmap_df.values,
+                x=[str(c) for c in heatmap_df.columns],
+                y=[str(i) for i in heatmap_df.index],
+                colorscale="RdYlGn",
+                zmid=0,
+                colorbar=dict(title="P&L"),
+                hovertemplate=f"{y_title}: %{{y}}<br>{x_title}: %{{x}}<br>P&L: %{{z:,.2f}}<extra></extra>",
+            )
+        ]
+    )
+    fig.update_layout(
+        title=title,
+        xaxis_title=x_title,
+        yaxis_title=y_title,
+        height=360,
+    )
+    return style_figure(fig)
+
+
+def build_tag_performance_chart(tag_summary: pd.DataFrame, kind: str) -> go.Figure:
+    """Słupki total P&L i win-rate per tag."""
+    if tag_summary is None or tag_summary.empty:
+        fig = go.Figure()
+        fig.update_layout(title="Brak danych tagów")
+        return style_figure(fig)
+
+    df = tag_summary[tag_summary["kind"] == kind].copy()
+    if df.empty:
+        fig = go.Figure()
+        fig.update_layout(title=f"Brak danych tagów {kind}")
+        return style_figure(fig)
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(
+        go.Bar(
+            x=df["tag"],
+            y=df["total_pnl"],
+            marker_color="#4a9eff",
+            name="Total P&L",
+            text=df["total_pnl"].round(2),
+            textposition="outside",
+        ),
+        secondary_y=False,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=df["tag"],
+            y=df["win_rate_pct"],
+            mode="lines+markers",
+            name="Win rate %",
+            line=dict(color="#f39c12", width=2),
+        ),
+        secondary_y=True,
+    )
+    fig.update_layout(
+        title=f"Skuteczność tagów ({kind})",
+        height=380,
+        legend=dict(orientation="h", y=1.08),
+    )
+    fig.update_yaxes(title_text="P&L", secondary_y=False)
+    fig.update_yaxes(title_text="Win rate %", range=[0, 100], secondary_y=True)
+    return style_figure(fig)
+
+
+def build_efficiency_chart(round_trips: pd.DataFrame) -> go.Figure:
+    """Efficiency score i risk-adjusted return per day."""
+    if round_trips is None or round_trips.empty:
+        fig = go.Figure()
+        fig.update_layout(title="Brak danych efficiency")
+        return style_figure(fig)
+    required = {"exit_efficiency_pct", "risk_adj_pct_per_day", "close_time"}
+    if not required.issubset(round_trips.columns):
+        fig = go.Figure()
+        fig.update_layout(title="Brak metryk efficiency")
+        return style_figure(fig)
+
+    df = round_trips.sort_values("close_time").copy()
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        subplot_titles=("Exit efficiency %", "Risk-adjusted return (%/day)"),
+        vertical_spacing=0.12,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=df["close_time"],
+            y=df["exit_efficiency_pct"],
+            marker_color="#9b59b6",
+            name="Exit efficiency %",
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=df["close_time"],
+            y=df["risk_adj_pct_per_day"],
+            marker_color="#2ecc71",
+            name="Risk-adjusted %/day",
+        ),
+        row=2,
+        col=1,
+    )
+    fig.add_hline(y=100, line_dash="dot", line_color=reference_line_color(), row=1, col=1)
+    fig.add_hline(y=0, line_dash="dot", line_color=reference_line_color(), row=2, col=1)
+    fig.update_xaxes(title_text="Data zamknięcia", row=2, col=1)
+    fig.update_yaxes(title_text="Efficiency %", row=1, col=1)
+    fig.update_yaxes(title_text="% / day", row=2, col=1)
+    fig.update_layout(height=520, title="Exit timing efficiency + risk-adjusted per trade")
+    return style_figure(fig)

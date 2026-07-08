@@ -187,3 +187,91 @@ def build_dividend_yield_comparison(
         .sort_values("yield_on_cost_pct", ascending=False)
         .reset_index(drop=True)
     )
+
+
+def build_projected_dividend_cashflow_12m(
+    analyzed: pd.DataFrame,
+    currency: str,
+) -> tuple[pd.DataFrame, dict]:
+    """
+    Projekcja dywidend na 12 miesięcy (miesięcznie) na bazie forward annual income.
+
+    Założenie:
+    - gdy brak częstotliwości, rozkładamy roczny income równomiernie po 12 miesiącach,
+    - jeśli jest ex_date, pierwsza alokacja od miesiąca ex-date.
+    """
+    summary = {"annual_income": 0.0, "currency": currency}
+    if analyzed is None or analyzed.empty:
+        return pd.DataFrame(), summary
+
+    cal, cal_summary = build_dividend_calendar(analyzed, currency)
+    if cal.empty:
+        return pd.DataFrame(), summary
+
+    start = pd.Timestamp.now().normalize().replace(day=1)
+    months = [start + pd.DateOffset(months=i) for i in range(12)]
+    out = pd.DataFrame({"month": months, "projected_income": 0.0})
+
+    for _, row in cal.iterrows():
+        annual_income = float(row.get("annual_income", 0.0) or 0.0)
+        if annual_income <= 0:
+            continue
+        monthly = annual_income / 12.0
+        anchor = row.get("ex_date")
+        if pd.notna(anchor):
+            anchor_month = pd.Timestamp(anchor).normalize().replace(day=1)
+            if anchor_month > start:
+                month_mask = out["month"] >= anchor_month
+                out.loc[month_mask, "projected_income"] += monthly
+                continue
+        out["projected_income"] += monthly
+
+    out["month_label"] = out["month"].dt.strftime("%Y-%m")
+    summary["annual_income"] = float(cal_summary.get("annual_income", 0.0))
+    return out, summary
+
+
+def build_dividend_growth_tracker(analyzed: pd.DataFrame) -> pd.DataFrame:
+    """
+    Dividend growth tracker per ticker:
+    growth = (current_rate / previous_rate - 1) * 100, status in {raise, flat, cut}.
+    """
+    if analyzed is None or analyzed.empty or "ticker_yahoo" not in analyzed.columns:
+        return pd.DataFrame()
+
+    tickers = tuple(sorted(analyzed["ticker_yahoo"].dropna().astype(str).unique()))
+    rows: list[dict] = []
+    for t in tickers:
+        info = fetch_ticker_info(t)
+        current = info.get("dividendRate")
+        previous = info.get("previousDividendRate")
+        try:
+            current = float(current) if current is not None else None
+        except (TypeError, ValueError):
+            current = None
+        try:
+            previous = float(previous) if previous is not None else None
+        except (TypeError, ValueError):
+            previous = None
+        if not current or not previous or previous <= 0:
+            continue
+        growth_pct = (current / previous - 1.0) * 100
+        if growth_pct > 1.0:
+            status = "raise"
+        elif growth_pct < -1.0:
+            status = "cut"
+        else:
+            status = "flat"
+        rows.append(
+            {
+                "ticker_yahoo": t,
+                "current_rate": current,
+                "previous_rate": previous,
+                "growth_pct": growth_pct,
+                "status": status,
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows).sort_values("growth_pct", ascending=False).reset_index(drop=True)

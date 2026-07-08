@@ -319,3 +319,65 @@ def build_ex_dividend_calendar_chart(cal: pd.DataFrame, month: pd.Timestamp) -> 
         hovermode="closest",
     )
     return style_figure(fig)
+
+
+def build_projected_dividend_cashflow_chart(projected_12m: pd.DataFrame, currency: str) -> go.Figure:
+    """Słupkowy projected dividend cashflow na 12 miesięcy."""
+    if projected_12m is None or projected_12m.empty:
+        fig = go.Figure()
+        fig.update_layout(title="Brak danych projekcji dywidend")
+        return style_figure(fig)
+
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=projected_12m["month_label"],
+                y=projected_12m["projected_income"],
+                marker_color="#9b59b6",
+                text=projected_12m["projected_income"].round(2),
+                textposition="outside",
+            )
+        ]
+    )
+    fig.update_layout(
+        title=f"Projected dividend cashflow (12M) — {currency}",
+        xaxis_title="Miesiąc",
+        yaxis_title=f"Kwota ({currency})",
+        height=360,
+    )
+    return style_figure(fig)
+
+
+def build_dividend_growth_tracker_chart(growth_df: pd.DataFrame) -> go.Figure:
+    """Status raise/flat/cut + % zmiany dywidendy per ticker."""
+    if growth_df is None or growth_df.empty:
+        fig = go.Figure()
+        fig.update_layout(title="Brak danych growth tracker")
+        return style_figure(fig)
+
+    color_map = {"raise": "#2ecc71", "flat": "#f39c12", "cut": "#e74c3c"}
+    colors = [color_map.get(s, "#95a5a6") for s in growth_df["status"]]
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=growth_df["ticker_yahoo"],
+                y=growth_df["growth_pct"],
+                marker_color=colors,
+                text=growth_df["growth_pct"].round(2),
+                textposition="outside",
+                hovertemplate=(
+                    "Ticker: %{x}<br>Zmiana: %{y:.2f}%<br>"
+                    "Current: %{customdata[0]:.4f}<br>Previous: %{customdata[1]:.4f}<extra></extra>"
+                ),
+                customdata=growth_df[["current_rate", "previous_rate"]].to_numpy(),
+            )
+        ]
+    )
+    fig.add_hline(y=0, line_dash="dash", line_color=reference_line_color())
+    fig.update_layout(
+        title="Dividend growth tracker (current vs previous rate)",
+        xaxis_title="Ticker",
+        yaxis_title="Zmiana dywidendy %",
+        height=360,
+    )
+    return style_figure(fig)

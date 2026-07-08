@@ -14,7 +14,12 @@ from core.dividends import (
     dividends_summary,
     parse_dividends,
 )
-from core.dividend_calendar import build_dividend_calendar, build_dividend_yield_comparison
+from core.dividend_calendar import (
+    build_dividend_calendar,
+    build_dividend_growth_tracker,
+    build_dividend_yield_comparison,
+    build_projected_dividend_cashflow_12m,
+)
 from core.session import (
     get_analyzed_open,
     get_cost_basis_history,
@@ -24,17 +29,30 @@ from core.session import (
     get_trade_analytics,
 )
 from core.tax_harvest import compute_tax_harvest
-from core.trade_analytics import classify_exit_strategy, compute_streak_stats
+from core.trade_analytics import (
+    add_trade_efficiency_metrics,
+    apply_trade_tags,
+    classify_exit_strategy,
+    compute_expectancy_metrics,
+    compute_rolling_metrics,
+    compute_streak_stats,
+    compute_trade_heatmap,
+    summarize_tags,
+)
 from core.trade_excursions import compute_mae_mfe
 from core.transactions import parse_cash_operations_trades
 from ui.analytics_charts import (
+    build_efficiency_chart,
     build_cost_basis_chart,
     build_exit_strategy_chart,
     build_holding_period_chart,
     build_holding_vs_outcome_chart,
     build_mae_mfe_chart,
+    build_rolling_metrics_chart,
     build_round_trip_pnl_chart,
     build_streak_chart,
+    build_tag_performance_chart,
+    build_trade_heatmap_chart,
     build_trader_equity_curve,
     build_win_loss_comparison,
 )
@@ -44,10 +62,12 @@ from ui.history_charts import (
     build_contributions_vs_value_chart,
     build_cumulative_dividends_chart,
     build_cumulative_realized_pnl,
+    build_dividend_growth_tracker_chart,
     build_dividend_yield_comparison_chart,
     build_dividends_per_year_chart,
     build_ex_dividend_calendar_chart,
     build_portfolio_timeline_chart,
+    build_projected_dividend_cashflow_chart,
 )
 from ui.returns_charts import build_portfolio_value_drawdown_chart
 from ui.sidebar import render_import_sidebar
@@ -189,6 +209,16 @@ with tab_analytics:
                 f"**{format_currency(summary.total_realized_pnl, currency)}**"
             )
 
+            if has_round_trips:
+                exp = compute_expectancy_metrics(round_trips)
+                e1, e2, e3 = st.columns(3)
+                with e1:
+                    st.metric("Expectancy / trade", format_currency(exp["expectancy_value"], currency))
+                with e2:
+                    st.metric("Expectancy (R)", f"{exp['expectancy_r']:.2f} R")
+                with e3:
+                    st.metric("Avg R-multiple", f"{exp['avg_r_multiple']:.2f} R")
+
             c1, c2 = st.columns(2)
             with c1:
                 st.plotly_chart(
@@ -225,11 +255,50 @@ with tab_analytics:
                     trips_exc = compute_mae_mfe(round_trips)
                 st.plotly_chart(build_mae_mfe_chart(trips_exc), use_container_width=True)
 
+                trips_eff = add_trade_efficiency_metrics(trips_exc)
+                st.markdown("### MAE/MFE + efficiency score exitu")
+                st.caption(
+                    "Efficiency: dla zyskownych trade'ów realizacja względem MFE, "
+                    "dla stratnych relacja straty do MAE. + risk-adjusted %/day."
+                )
+                st.plotly_chart(build_efficiency_chart(trips_eff), use_container_width=True)
+
                 st.markdown("### Czas trzymania vs wynik")
                 st.plotly_chart(
                     build_holding_vs_outcome_chart(round_trips),
                     use_container_width=True,
                 )
+
+                rolling = compute_rolling_metrics(round_trips, windows=(30, 50))
+                st.markdown("### Rolling win rate / rolling profit factor")
+                st.plotly_chart(
+                    build_rolling_metrics_chart(rolling),
+                    use_container_width=True,
+                )
+
+                daily_heat, weekly_heat = compute_trade_heatmap(round_trips)
+                st.markdown("### Dzienny / tygodniowy heatmap P&L")
+                h1, h2 = st.columns(2)
+                with h1:
+                    st.plotly_chart(
+                        build_trade_heatmap_chart(
+                            daily_heat,
+                            "Heatmap P&L: dzień tygodnia × godzina",
+                            "Godzina",
+                            "Dzień",
+                        ),
+                        use_container_width=True,
+                    )
+                with h2:
+                    st.plotly_chart(
+                        build_trade_heatmap_chart(
+                            weekly_heat,
+                            "Heatmap P&L: rok × tydzień ISO",
+                            "Tydzień",
+                            "Rok",
+                        ),
+                        use_container_width=True,
+                    )
 
                 streak_stats = compute_streak_stats(round_trips)
                 st.markdown("### Sekwencja wygranych / przegranych")
@@ -255,6 +324,46 @@ with tab_analytics:
                     "time-based (≥90 dni bez powyższych), inne."
                 )
                 st.plotly_chart(build_exit_strategy_chart(trips_exit), use_container_width=True)
+
+                st.markdown("### Tagi przyczyny wejścia/wyjścia (manualne)")
+                st.caption(
+                    "Edytuj tagi ręcznie i od razu zobacz statystyki skuteczności per tag."
+                )
+                tagged = apply_trade_tags(round_trips)
+                editable = tagged[
+                    ["ticker_xtb", "open_time", "close_time", "realized_pnl", "entry_tag", "exit_tag"]
+                ].copy()
+                editable = editable.rename(
+                    columns={
+                        "ticker_xtb": "Ticker",
+                        "open_time": "Open",
+                        "close_time": "Close",
+                        "realized_pnl": "PnL",
+                        "entry_tag": "Entry tag",
+                        "exit_tag": "Exit tag",
+                    }
+                )
+                edited = st.data_editor(
+                    editable,
+                    use_container_width=True,
+                    hide_index=True,
+                    key="trade_tags_editor",
+                    num_rows="fixed",
+                )
+                tagged["entry_tag"] = edited["Entry tag"].astype(str).str.strip().replace("", "other")
+                tagged["exit_tag"] = edited["Exit tag"].astype(str).str.strip().replace("", "other")
+                tag_summary = summarize_tags(tagged)
+                tc1, tc2 = st.columns(2)
+                with tc1:
+                    st.plotly_chart(
+                        build_tag_performance_chart(tag_summary, kind="entry"),
+                        use_container_width=True,
+                    )
+                with tc2:
+                    st.plotly_chart(
+                        build_tag_performance_chart(tag_summary, kind="exit"),
+                        use_container_width=True,
+                    )
 
                 st.plotly_chart(
                     build_round_trip_pnl_chart(round_trips),
@@ -833,3 +942,36 @@ with tab_dividends:
                     ),
                     use_container_width=True,
                 )
+
+                projected_12m, _projected_summary = build_projected_dividend_cashflow_12m(
+                    analyzed_div, currency
+                )
+                if not projected_12m.empty:
+                    st.markdown("#### Projected cashflow 12M (miesięcznie)")
+                    st.metric(
+                        "Suma projekcji 12M",
+                        format_currency(float(projected_12m["projected_income"].sum()), currency),
+                    )
+                    st.plotly_chart(
+                        build_projected_dividend_cashflow_chart(projected_12m, currency),
+                        use_container_width=True,
+                    )
+
+                growth_df = build_dividend_growth_tracker(analyzed_div)
+                if not growth_df.empty:
+                    st.markdown("#### Dividend growth tracker")
+                    st.plotly_chart(
+                        build_dividend_growth_tracker_chart(growth_df),
+                        use_container_width=True,
+                    )
+                    growth_show = growth_df.rename(
+                        columns={
+                            "ticker_yahoo": "Ticker",
+                            "current_rate": "Current rate",
+                            "previous_rate": "Previous rate",
+                            "growth_pct": "Growth %",
+                            "status": "Status",
+                        }
+                    ).copy()
+                    growth_show["Growth %"] = growth_show["Growth %"].round(2)
+                    st.dataframe(growth_show, use_container_width=True, hide_index=True)

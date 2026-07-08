@@ -269,6 +269,198 @@ def compute_streak_stats(round_trips: pd.DataFrame) -> dict:
     }
 
 
+def compute_expectancy_metrics(round_trips: pd.DataFrame) -> dict[str, float]:
+    """
+    Expectancy i R-multiple na podstawie round-tripów.
+
+    R przyjmujemy jako abs(średnia strata) per trade.
+    """
+    out = {
+        "expectancy_value": 0.0,
+        "expectancy_r": 0.0,
+        "avg_r_multiple": 0.0,
+    }
+    if round_trips is None or round_trips.empty or "realized_pnl" not in round_trips.columns:
+        return out
+
+    pnl = pd.to_numeric(round_trips["realized_pnl"], errors="coerce").dropna()
+    if pnl.empty:
+        return out
+
+    losses = pnl[pnl < 0]
+    risk_unit = abs(float(losses.mean())) if not losses.empty else 0.0
+    expectancy_value = float(pnl.mean())
+    if risk_unit <= 0:
+        return {
+            "expectancy_value": expectancy_value,
+            "expectancy_r": 0.0,
+            "avg_r_multiple": 0.0,
+        }
+
+    r_mult = pnl / risk_unit
+    return {
+        "expectancy_value": expectancy_value,
+        "expectancy_r": float(expectancy_value / risk_unit),
+        "avg_r_multiple": float(r_mult.mean()),
+    }
+
+
+def compute_rolling_metrics(
+    round_trips: pd.DataFrame,
+    windows: tuple[int, ...] = (30, 50),
+) -> pd.DataFrame:
+    """Rolling win rate i rolling profit factor po liczbie transakcji."""
+    if round_trips is None or round_trips.empty:
+        return pd.DataFrame()
+    required = {"close_time", "realized_pnl"}
+    if not required.issubset(round_trips.columns):
+        return pd.DataFrame()
+
+    df = round_trips.sort_values("close_time").copy()
+    df["trade_no"] = range(1, len(df) + 1)
+    pnl = pd.to_numeric(df["realized_pnl"], errors="coerce").fillna(0.0)
+    is_win = pnl > 0
+
+    out = df[["trade_no", "close_time"]].copy()
+    for w in windows:
+        wins = (
+            is_win.rolling(w, min_periods=max(5, min(w, 10))).mean() * 100
+        )
+        gross_win = pnl.clip(lower=0).rolling(w, min_periods=max(5, min(w, 10))).sum()
+        gross_loss = (-pnl.clip(upper=0)).rolling(w, min_periods=max(5, min(w, 10))).sum()
+        pf = gross_win / gross_loss.replace(0, pd.NA)
+        out[f"win_rate_{w}"] = wins
+        out[f"profit_factor_{w}"] = pf
+    return out
+
+
+def compute_trade_heatmap(round_trips: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Dzienny i tygodniowy heatmap P&L.
+
+    daily: index=day_name, columns=hour, values=sum(realized_pnl)
+    weekly: index=year, columns=iso_week, values=sum(realized_pnl)
+    """
+    if round_trips is None or round_trips.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    required = {"close_time", "realized_pnl"}
+    if not required.issubset(round_trips.columns):
+        return pd.DataFrame(), pd.DataFrame()
+
+    df = round_trips.copy()
+    df["close_time"] = pd.to_datetime(df["close_time"], errors="coerce")
+    df["realized_pnl"] = pd.to_numeric(df["realized_pnl"], errors="coerce")
+    df = df.dropna(subset=["close_time", "realized_pnl"])
+    if df.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    day_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    df["day_name"] = df["close_time"].dt.day_name().str.slice(0, 3)
+    df["hour"] = df["close_time"].dt.hour
+    daily = (
+        df.pivot_table(index="day_name", columns="hour", values="realized_pnl", aggfunc="sum")
+        .reindex(day_order)
+        .fillna(0.0)
+    )
+
+    iso = df["close_time"].dt.isocalendar()
+    df["iso_year"] = iso.year.astype(int)
+    df["iso_week"] = iso.week.astype(int)
+    weekly = (
+        df.pivot_table(index="iso_year", columns="iso_week", values="realized_pnl", aggfunc="sum")
+        .sort_index()
+        .fillna(0.0)
+    )
+    return daily, weekly
+
+
+def apply_trade_tags(
+    round_trips: pd.DataFrame,
+    default_entry_tag: str = "other",
+    default_exit_tag: str = "other",
+) -> pd.DataFrame:
+    """Dodaje kolumny tagów wejścia/wyjścia do dalszej manualnej edycji w UI."""
+    if round_trips is None or round_trips.empty:
+        return pd.DataFrame()
+    df = round_trips.copy()
+    if "entry_tag" not in df.columns:
+        df["entry_tag"] = default_entry_tag
+    if "exit_tag" not in df.columns:
+        df["exit_tag"] = default_exit_tag
+    return df
+
+
+def summarize_tags(tagged_round_trips: pd.DataFrame) -> pd.DataFrame:
+    """Statystyki per tag (entry/exit) po manualnym przypisaniu."""
+    if tagged_round_trips is None or tagged_round_trips.empty:
+        return pd.DataFrame()
+    required = {"realized_pnl", "entry_tag", "exit_tag"}
+    if not required.issubset(tagged_round_trips.columns):
+        return pd.DataFrame()
+
+    frames: list[pd.DataFrame] = []
+    tagged = tagged_round_trips.copy()
+    tagged["is_win"] = tagged["realized_pnl"] > 0
+
+    for col, kind in (("entry_tag", "entry"), ("exit_tag", "exit")):
+        grp = (
+            tagged.groupby(col, dropna=False)
+            .agg(
+                trades=("realized_pnl", "count"),
+                total_pnl=("realized_pnl", "sum"),
+                avg_pnl=("realized_pnl", "mean"),
+                win_rate_pct=("is_win", lambda s: float(s.mean() * 100)),
+            )
+            .reset_index()
+            .rename(columns={col: "tag"})
+        )
+        grp["kind"] = kind
+        frames.append(grp)
+
+    return pd.concat(frames, ignore_index=True)
+
+
+def add_trade_efficiency_metrics(round_trips_with_excursions: pd.DataFrame) -> pd.DataFrame:
+    """
+    Dodaje efficiency score exitu oraz risk-adjusted return per day.
+
+    exit_efficiency_pct:
+    - dla wygranych: realized / MFE
+    - dla stratnych: MAE / realized_loss (im bliżej 100%, tym strata bliska najgorszemu punktowi)
+    """
+    if round_trips_with_excursions is None or round_trips_with_excursions.empty:
+        return pd.DataFrame()
+    df = round_trips_with_excursions.copy()
+    for col in ("realized_pnl", "pnl_pct", "holding_days", "mae_pct", "mfe_pct"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    risk_adj = df["pnl_pct"] / df["holding_days"].replace(0, pd.NA)
+    df["risk_adj_pct_per_day"] = risk_adj
+
+    eff: list[float | None] = []
+    for _, row in df.iterrows():
+        pnl_pct = row.get("pnl_pct")
+        mfe = row.get("mfe_pct")
+        mae = row.get("mae_pct")
+        if pd.isna(pnl_pct):
+            eff.append(None)
+            continue
+        if pnl_pct >= 0:
+            if pd.isna(mfe) or mfe <= 0:
+                eff.append(None)
+            else:
+                eff.append(float((pnl_pct / mfe) * 100))
+        else:
+            # strata: porównanie do max obsunięcia w trakcie
+            if pd.isna(mae) or mae >= 0:
+                eff.append(None)
+            else:
+                eff.append(float((abs(mae) / abs(pnl_pct)) * 100))
+    df["exit_efficiency_pct"] = eff
+    return df
+
+
 def backtest_threshold_heuristic(
     closed_or_round_trips: pd.DataFrame,
     signal_scores: pd.Series,
