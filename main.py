@@ -35,7 +35,7 @@ if report is None:
         - **Strona główna** – dashboard KPI (TWR, MWR, Sharpe, alerty) ze sparkline'ami
         - **Portfolio** – otwarte pozycje, wykresy, metryki PnL
         - **Pozycja** – wykres 1Y/3Y/5Y, fundamenty, benchmark, timing wejścia
-        - **Historia** – timeline, trade analytics, cost basis, zamknięte pozycje
+        - **Historia** – timeline, trade analytics, Belka, kalendarz (dywidendy + wyniki)
         - **Analiza** – MA, RSI, MACD, Bollinger Bands (pandas_ta)
         - **Watchlist** – tickery spoza portfela, zwroty i porównanie z portfelem
         - **Alokacja** – podział sektorowy i geograficzny (USA / EU / PL)

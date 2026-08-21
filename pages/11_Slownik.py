@@ -128,6 +128,12 @@ TERMS: list[tuple[str, str, str]] = [
     ("Fundamenty i konsensus", "Ex-date (data odcięcia)",
      "Dzień, od którego kupno akcji nie daje już prawa do najbliższej dywidendy. Aby ją "
      "dostać, trzeba mieć akcje przed ex-date."),
+    ("Fundamenty i konsensus", "Earnings (wyniki kwartalne)",
+     "Publikacja wyników finansowych spółki. Wokół daty raportu kurs bywa bardzo zmienny "
+     "(luki, duże ruchy). Kalendarz w Historia → Kalendarz → Wyniki; źródło: Yahoo Finance."),
+    ("Fundamenty i konsensus", "Prognoza EPS",
+     "Konsensusowa prognoza zysku na akcję (Earnings Per Share) przed raportem. "
+     "Porównanie z faktycznym EPS daje „niespodziankę” (surprise) — często napędza ruch ceny."),
     ("Fundamenty i konsensus", "Cena docelowa (target price)",
      "Średnia prognoza ceny od analityków (targetMeanPrice). Orientacyjny poziom, dokąd "
      "ich zdaniem może dojść kurs."),

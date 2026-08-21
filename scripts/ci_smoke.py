@@ -50,6 +50,7 @@ def main() -> int:
         "core.tax_harvest",
         "core.ike_ikze",
         "core.dividend_calendar",
+        "core.earnings_calendar",
         "core.concentration",
         "core.pnl_breakdown",
         "core.fx_decomposition",

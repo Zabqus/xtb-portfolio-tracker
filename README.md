@@ -14,7 +14,7 @@ xtb_portfolio_tracker/
 ├── pages/
 │   ├── 1_Portfolio.py           # Otwarte pozycje, ryzyko, eksport PDF/Excel
 │   ├── 2_Pozycja.py             # Analiza tickera (wykres, fundamenty, timing)
-│   ├── 3_Historia.py            # Timeline, trade analytics, Belka, dywidendy
+│   ├── 3_Historia.py            # Timeline, trade analytics, Belka, kalendarz
 │   ├── 4_Analiza.py             # Analiza techniczna (MA, RSI, MACD, BB)
 │   ├── 5_Watchlist.py           # Tickery spoza portfela
 │   ├── 6_Alokacja.py            # Sektor / region / FX + rebalancing
@@ -34,7 +34,8 @@ xtb_portfolio_tracker/
 │   ├── trade_analytics.py, trade_excursions.py, trade_tags.py
 │   ├── analyst_consensus.py, consensus_snapshots.py
 │   ├── signals.py, signal_snapshots.py, range_52w.py
-│   ├── dividends.py, dividend_calendar.py, tax_harvest.py, ike_ikze.py
+│   ├── dividends.py, dividend_calendar.py, earnings_calendar.py
+│   ├── tax_harvest.py, ike_ikze.py
 │   ├── allocation.py, rebalance.py, alerts.py, watchlist.py
 │   ├── snapshots.py, preferences.py, goals.py
 │   ├── technicals.py, timing_score.py, cost_basis.py
@@ -114,7 +115,7 @@ Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → przeglą
 - **Tagi round-tripów** – ręczne przyczyny wejścia/wyjścia (`trade_tags.json`)
 - **Cost basis** – historia średniej ceny per ticker
 - **Podatek Belki** – szacunek 19% per rok podatkowy + tax-loss harvesting + porównanie IKE/IKZE vs zwykłe
-- **Dywidendy** – metryki, kalendarz ex-date, forward yield, projected cashflow, growth tracker
+- **Kalendarz** – dywidendy (metryki, ex-date, forward yield, cashflow, growth) + wyniki kwartalne (earnings: data, dni do raportu, prognoza EPS, podświetlenie 7/14 dni)
 
 ### Alokacja, watchlist, alerty
 

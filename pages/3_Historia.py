@@ -20,6 +20,7 @@ from core.dividend_calendar import (
     build_dividend_yield_comparison,
     build_projected_dividend_cashflow_12m,
 )
+from core.earnings_calendar import build_earnings_calendar
 from core.session import (
     get_analyzed_open,
     get_cost_basis_history,
@@ -105,7 +106,7 @@ closed = report.closed_positions
     tab_closed,
     tab_trades,
     tab_tax,
-    tab_dividends,
+    tab_calendar,
 ) = st.tabs(
     [
         "Timeline portfela",
@@ -113,7 +114,7 @@ closed = report.closed_positions
         "Zamknięte pozycje",
         "Historia transakcji",
         "💰 Podatek Belki",
-        "💵 Dywidendy",
+        "📅 Kalendarz",
     ]
 )
 
@@ -1025,207 +1026,316 @@ with tab_tax:
             "wiekowych. To szacunek edukacyjny, nie porada podatkowa."
         )
 
-# --- Dywidendy ---
-with tab_dividends:
-    st.subheader("Dywidendy")
+# --- Kalendarz (dywidendy + wyniki) ---
+with tab_calendar:
+    tab_div, tab_earn = st.tabs(["💵 Dywidendy", "📊 Wyniki"])
 
-    if report.cash_operations is None:
-        st.warning("Wymagany natywny eksport Excel z arkuszem Cash Operations.")
-    else:
-        dividends = parse_dividends(report.cash_operations)
-        if dividends.empty:
-            st.info(
-                "Brak historycznych wypłat dywidend w okresie eksportu — "
-                "poniżej znajdziesz prognozę forward dla otwartych pozycji."
-            )
+    with tab_div:
+        st.subheader("Dywidendy")
+
+        if report.cash_operations is None:
+            st.warning("Wymagany natywny eksport Excel z arkuszem Cash Operations.")
         else:
-            current_year = pd.Timestamp.now().year
-            stats = dividends_summary(dividends, current_year=current_year)
-
-            d1, d2, d3, d4 = st.columns(4)
-            with d1:
-                st.metric("Łączne dywidendy", format_currency(stats["total"], currency))
-            with d2:
-                st.metric(
-                    f"W roku {current_year}",
-                    format_currency(stats["current_year"], currency),
-                )
-            with d3:
-                st.metric("Liczba wypłat", stats["count"])
-            with d4:
-                st.metric("Śr. na wypłatę", format_currency(stats["avg"], currency))
-
-            c1, c2 = st.columns(2)
-            with c1:
-                st.plotly_chart(
-                    build_dividends_per_year_chart(dividends_per_year(dividends), currency),
-                    use_container_width=True,
-                )
-            with c2:
-                st.plotly_chart(
-                    build_cumulative_dividends_chart(dividends, currency),
-                    use_container_width=True,
-                )
-
-            st.markdown("#### Dywidendy per ticker")
-            per_ticker = dividends_per_ticker(dividends)
-            if not per_ticker.empty:
-                show_pt = per_ticker.rename(
-                    columns={
-                        "ticker_xtb": "Ticker",
-                        "total": "Suma",
-                        "payouts": "Liczba wypłat",
-                        "last_date": "Ostatnia wypłata",
-                    }
-                )
-                show_pt["Suma"] = show_pt["Suma"].round(2)
-                st.dataframe(show_pt, use_container_width=True, hide_index=True)
-
-            with st.expander("Wszystkie wypłaty (surowe dane)"):
-                show_raw = dividends.rename(
-                    columns={
-                        "date": "Data",
-                        "year": "Rok",
-                        "ticker_xtb": "Ticker",
-                        "amount": "Kwota",
-                        "comment": "Komentarz",
-                    }
-                )
-                show_raw["Kwota"] = show_raw["Kwota"].round(2)
-                st.dataframe(show_raw, use_container_width=True, hide_index=True)
-
-        # Forward kalendarz — zawsze, niezależnie od historii wypłat.
-        st.divider()
-        st.markdown("#### 📅 Kalendarz i forward yield (otwarte pozycje)")
-        st.caption(
-            "Prognozowana stopa dywidendy i najbliższe daty odcięcia (ex-date) dla "
-            "obecnie otwartych pozycji — dane z Yahoo Finance `.info`."
-        )
-        analyzed_div = get_analyzed_open()
-        if analyzed_div is None or analyzed_div.empty:
-            st.info("Brak otwartych pozycji do prognozy dywidend.")
-        else:
-            with st.spinner("Pobieranie danych dywidendowych…"):
-                cal, cal_summary = build_dividend_calendar(analyzed_div, currency)
-
-            if cal.empty:
+            dividends = parse_dividends(report.cash_operations)
+            if dividends.empty:
                 st.info(
-                    "Żadna z otwartych pozycji nie wypłaca dywidend (lub Yahoo nie podaje "
-                    "stopy). Spółki wzrostowe i część ETF-ów akumulacyjnych nie płacą dywidend."
+                    "Brak historycznych wypłat dywidend w okresie eksportu — "
+                    "poniżej znajdziesz prognozę forward dla otwartych pozycji."
                 )
             else:
-                fc1, fc2, fc3 = st.columns(3)
-                with fc1:
-                    st.metric(
-                        "Szac. roczny przychód",
-                        format_currency(cal_summary["annual_income"], currency),
-                        help="Wartość pozycji × forward yield (suma po pozycjach).",
-                    )
-                with fc2:
-                    st.metric(
-                        "Forward yield portfela",
-                        f"{cal_summary['portfolio_yield_pct']:.2f}%",
-                    )
-                with fc3:
-                    st.metric("Pozycje płacące", cal_summary["paying_positions"])
+                current_year = pd.Timestamp.now().year
+                stats = dividends_summary(dividends, current_year=current_year)
 
-                cal_show = cal.copy()
-                cal_show["yield_pct"] = cal_show["yield_pct"].round(2)
-                cal_show["annual_income"] = cal_show["annual_income"].round(2)
-                cal_show["ex_date"] = cal_show["ex_date"].apply(
-                    lambda d: d.strftime("%Y-%m-%d") if pd.notna(d) else "—"
-                )
-                cal_show["ex_upcoming"] = cal_show["ex_upcoming"].map(
-                    {True: "🟢 nadchodzi", False: "⚪ minęła/szac."}
-                )
-                cal_show["rate_per_share"] = cal_show["rate_per_share"].apply(
-                    lambda v: round(v, 4) if pd.notna(v) else None
-                )
-                st.dataframe(
-                    cal_show[
-                        ["ticker_xtb", "yield_pct", "ex_date", "ex_upcoming",
-                         "annual_income", "rate_per_share"]
-                    ].rename(
+                d1, d2, d3, d4 = st.columns(4)
+                with d1:
+                    st.metric("Łączne dywidendy", format_currency(stats["total"], currency))
+                with d2:
+                    st.metric(
+                        f"W roku {current_year}",
+                        format_currency(stats["current_year"], currency),
+                    )
+                with d3:
+                    st.metric("Liczba wypłat", stats["count"])
+                with d4:
+                    st.metric("Śr. na wypłatę", format_currency(stats["avg"], currency))
+
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.plotly_chart(
+                        build_dividends_per_year_chart(
+                            dividends_per_year(dividends), currency
+                        ),
+                        use_container_width=True,
+                    )
+                with c2:
+                    st.plotly_chart(
+                        build_cumulative_dividends_chart(dividends, currency),
+                        use_container_width=True,
+                    )
+
+                st.markdown("#### Dywidendy per ticker")
+                per_ticker = dividends_per_ticker(dividends)
+                if not per_ticker.empty:
+                    show_pt = per_ticker.rename(
                         columns={
                             "ticker_xtb": "Ticker",
-                            "yield_pct": "Yield %",
-                            "ex_date": "Ex-date",
-                            "ex_upcoming": "Status",
-                            "annual_income": f"Szac. rocznie ({currency})",
-                            "rate_per_share": "Na akcję",
+                            "total": "Suma",
+                            "payouts": "Liczba wypłat",
+                            "last_date": "Ostatnia wypłata",
                         }
-                    ),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-                st.caption(
-                    "ℹ️ Forward yield to prognoza na bazie ostatniej dywidendy — rzeczywiste "
-                    "wypłaty mogą się różnić. Ex-date z przeszłości to wartość orientacyjna."
-                )
+                    )
+                    show_pt["Suma"] = show_pt["Suma"].round(2)
+                    st.dataframe(show_pt, use_container_width=True, hide_index=True)
 
-                yield_cmp = build_dividend_yield_comparison(analyzed_div, currency)
-                if not yield_cmp.empty:
-                    st.markdown("#### Yield on cost vs forward yield")
+                with st.expander("Wszystkie wypłaty (surowe dane)"):
+                    show_raw = dividends.rename(
+                        columns={
+                            "date": "Data",
+                            "year": "Rok",
+                            "ticker_xtb": "Ticker",
+                            "amount": "Kwota",
+                            "comment": "Komentarz",
+                        }
+                    )
+                    show_raw["Kwota"] = show_raw["Kwota"].round(2)
+                    st.dataframe(show_raw, use_container_width=True, hide_index=True)
+
+            # Forward kalendarz — zawsze, niezależnie od historii wypłat.
+            st.divider()
+            st.markdown("#### Kalendarz ex-date i forward yield")
+            st.caption(
+                "Prognozowana stopa dywidendy i najbliższe daty odcięcia (ex-date) dla "
+                "obecnie otwartych pozycji — dane z Yahoo Finance `.info`."
+            )
+            analyzed_div = get_analyzed_open()
+            if analyzed_div is None or analyzed_div.empty:
+                st.info("Brak otwartych pozycji do prognozy dywidend.")
+            else:
+                with st.spinner("Pobieranie danych dywidendowych…"):
+                    cal, cal_summary = build_dividend_calendar(analyzed_div, currency)
+
+                if cal.empty:
+                    st.info(
+                        "Żadna z otwartych pozycji nie wypłaca dywidend (lub Yahoo nie podaje "
+                        "stopy). Spółki wzrostowe i część ETF-ów akumulacyjnych nie płacą dywidend."
+                    )
+                else:
+                    fc1, fc2, fc3 = st.columns(3)
+                    with fc1:
+                        st.metric(
+                            "Szac. roczny przychód",
+                            format_currency(cal_summary["annual_income"], currency),
+                            help="Wartość pozycji × forward yield (suma po pozycjach).",
+                        )
+                    with fc2:
+                        st.metric(
+                            "Forward yield portfela",
+                            f"{cal_summary['portfolio_yield_pct']:.2f}%",
+                        )
+                    with fc3:
+                        st.metric("Pozycje płacące", cal_summary["paying_positions"])
+
+                    cal_show = cal.copy()
+                    cal_show["yield_pct"] = cal_show["yield_pct"].round(2)
+                    cal_show["annual_income"] = cal_show["annual_income"].round(2)
+                    cal_show["ex_date"] = cal_show["ex_date"].apply(
+                        lambda d: d.strftime("%Y-%m-%d") if pd.notna(d) else "—"
+                    )
+                    cal_show["ex_upcoming"] = cal_show["ex_upcoming"].map(
+                        {True: "🟢 nadchodzi", False: "⚪ minęła/szac."}
+                    )
+                    cal_show["rate_per_share"] = cal_show["rate_per_share"].apply(
+                        lambda v: round(v, 4) if pd.notna(v) else None
+                    )
+                    st.dataframe(
+                        cal_show[
+                            [
+                                "ticker_xtb",
+                                "yield_pct",
+                                "ex_date",
+                                "ex_upcoming",
+                                "annual_income",
+                                "rate_per_share",
+                            ]
+                        ].rename(
+                            columns={
+                                "ticker_xtb": "Ticker",
+                                "yield_pct": "Yield %",
+                                "ex_date": "Ex-date",
+                                "ex_upcoming": "Status",
+                                "annual_income": f"Szac. rocznie ({currency})",
+                                "rate_per_share": "Na akcję",
+                            }
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
                     st.caption(
-                        "Yield on cost = roczna dywidenda / koszt pozycji. "
-                        "Forward yield = prognoza Yahoo na bazie bieżącej ceny."
+                        "ℹ️ Forward yield to prognoza na bazie ostatniej dywidendy — rzeczywiste "
+                        "wypłaty mogą się różnić. Ex-date z przeszłości to wartość orientacyjna."
+                    )
+
+                    yield_cmp = build_dividend_yield_comparison(analyzed_div, currency)
+                    if not yield_cmp.empty:
+                        st.markdown("#### Yield on cost vs forward yield")
+                        st.caption(
+                            "Yield on cost = roczna dywidenda / koszt pozycji. "
+                            "Forward yield = prognoza Yahoo na bazie bieżącej ceny."
+                        )
+                        st.plotly_chart(
+                            build_dividend_yield_comparison_chart(yield_cmp),
+                            use_container_width=True,
+                        )
+
+                    st.markdown("#### Widok kalendarza ex-dividend")
+                    cal_months = sorted(
+                        {
+                            pd.Timestamp(d).strftime("%Y-%m")
+                            for d in cal["ex_date"].dropna()
+                        }
+                    )
+                    if not cal_months:
+                        cal_months = [pd.Timestamp.now().strftime("%Y-%m")]
+                    selected_month = st.selectbox(
+                        "Miesiąc",
+                        cal_months,
+                        index=len(cal_months) - 1,
+                        key="ex_div_month",
                     )
                     st.plotly_chart(
-                        build_dividend_yield_comparison_chart(yield_cmp),
+                        build_ex_dividend_calendar_chart(
+                            cal, pd.Timestamp(f"{selected_month}-01")
+                        ),
                         use_container_width=True,
                     )
 
-                st.markdown("#### Widok kalendarza ex-dividend")
-                cal_months = sorted(
-                    {
-                        pd.Timestamp(d).strftime("%Y-%m")
-                        for d in cal["ex_date"].dropna()
+                    projected_12m, _projected_summary = build_projected_dividend_cashflow_12m(
+                        analyzed_div, currency
+                    )
+                    if not projected_12m.empty:
+                        st.markdown("#### Projected cashflow 12M (miesięcznie)")
+                        st.metric(
+                            "Suma projekcji 12M",
+                            format_currency(
+                                float(projected_12m["projected_income"].sum()), currency
+                            ),
+                        )
+                        st.plotly_chart(
+                            build_projected_dividend_cashflow_chart(
+                                projected_12m, currency
+                            ),
+                            use_container_width=True,
+                        )
+
+                    growth_df = build_dividend_growth_tracker(analyzed_div)
+                    if not growth_df.empty:
+                        st.markdown("#### Dividend growth tracker")
+                        st.plotly_chart(
+                            build_dividend_growth_tracker_chart(growth_df),
+                            use_container_width=True,
+                        )
+                        growth_show = growth_df.rename(
+                            columns={
+                                "ticker_yahoo": "Ticker",
+                                "current_rate": "Current rate",
+                                "previous_rate": "Previous rate",
+                                "growth_pct": "Growth %",
+                                "status": "Status",
+                            }
+                        ).copy()
+                        growth_show["Growth %"] = growth_show["Growth %"].round(2)
+                        st.dataframe(
+                            growth_show, use_container_width=True, hide_index=True
+                        )
+
+    with tab_earn:
+        st.subheader("Kalendarz wyników (earnings)")
+        st.caption(
+            "Nadchodzące daty publikacji wyników kwartalnych dla otwartych pozycji — "
+            "dane z Yahoo Finance `Ticker.calendar` (cache 24h)."
+        )
+        st.info(
+            "⚠️ Wokół raportów wyniki bywają bardzo zmienne: duże ruchy dzienne i luki "
+            "cenowe to norma. Traktuj ten kalendarz jako ostrzeżenie przed zmiennością, "
+            "nie jako rekomendację."
+        )
+
+        analyzed_earn = get_analyzed_open()
+        if analyzed_earn is None or analyzed_earn.empty:
+            st.info("Brak otwartych pozycji do kalendarza wyników.")
+        else:
+            with st.spinner("Pobieranie dat wyników…"):
+                earn, earn_summary = build_earnings_calendar(analyzed_earn)
+
+            e1, e2, e3, e4 = st.columns(4)
+            with e1:
+                st.metric("Z datą raportu", earn_summary["with_date"])
+            with e2:
+                st.metric("W ciągu 7 dni", earn_summary["within_7d"])
+            with e3:
+                st.metric("W ciągu 14 dni", earn_summary["within_14d"])
+            with e4:
+                st.metric(
+                    "Bez daty / ETF",
+                    earn_summary["missing"],
+                    help="Yahoo często nie podaje earnings dla ETF-ów i części zagranicznych.",
+                )
+
+            if earn.empty:
+                st.info(
+                    "Brak nadchodzących dat wyników dla otwartych pozycji. "
+                    "ETF-y i część spółek zagranicznych mogą nie mieć danych w Yahoo."
+                )
+            else:
+                urgency_label = {
+                    "7d": "🔴 ≤7 dni",
+                    "14d": "🟡 ≤14 dni",
+                    "later": "⚪ dalej",
+                }
+                earn_show = earn.copy()
+                earn_show["earnings_date"] = earn_show["earnings_date"].dt.strftime(
+                    "%Y-%m-%d"
+                )
+                earn_show["eps_estimate"] = earn_show["eps_estimate"].apply(
+                    lambda v: round(v, 3) if pd.notna(v) else None
+                )
+                earn_show["urgency"] = earn_show["urgency"].map(urgency_label)
+
+                def _earn_row_style(row: pd.Series) -> list[str]:
+                    label = str(row.get("Okno", ""))
+                    if "≤7" in label:
+                        color = "background-color: rgba(220, 53, 69, 0.18)"
+                    elif "≤14" in label:
+                        color = "background-color: rgba(255, 193, 7, 0.22)"
+                    else:
+                        color = ""
+                    return [color] * len(row)
+
+                display_earn = earn_show[
+                    [
+                        "ticker_xtb",
+                        "earnings_date",
+                        "days_until",
+                        "eps_estimate",
+                        "urgency",
+                    ]
+                ].rename(
+                    columns={
+                        "ticker_xtb": "Ticker",
+                        "earnings_date": "Data raportu",
+                        "days_until": "Dni do raportu",
+                        "eps_estimate": "Prognoza EPS",
+                        "urgency": "Okno",
                     }
                 )
-                if not cal_months:
-                    cal_months = [pd.Timestamp.now().strftime("%Y-%m")]
-                selected_month = st.selectbox(
-                    "Miesiąc",
-                    cal_months,
-                    index=len(cal_months) - 1,
-                    key="ex_div_month",
-                )
-                st.plotly_chart(
-                    build_ex_dividend_calendar_chart(
-                        cal, pd.Timestamp(f"{selected_month}-01")
-                    ),
-                    use_container_width=True,
-                )
+                try:
+                    styled = display_earn.style.apply(_earn_row_style, axis=1)
+                    st.dataframe(styled, use_container_width=True, hide_index=True)
+                except Exception:
+                    st.dataframe(display_earn, use_container_width=True, hide_index=True)
 
-                projected_12m, _projected_summary = build_projected_dividend_cashflow_12m(
-                    analyzed_div, currency
+                st.caption(
+                    "ℹ️ Prognoza EPS = konsensus analityków (`Earnings Average` z Yahoo). "
+                    "Daty bywają oknem — pokazujemy najwcześniejszy dzień. Brak wiersza = "
+                    "Yahoo nie zwróciło daty (częste dla ETF-ów)."
                 )
-                if not projected_12m.empty:
-                    st.markdown("#### Projected cashflow 12M (miesięcznie)")
-                    st.metric(
-                        "Suma projekcji 12M",
-                        format_currency(float(projected_12m["projected_income"].sum()), currency),
-                    )
-                    st.plotly_chart(
-                        build_projected_dividend_cashflow_chart(projected_12m, currency),
-                        use_container_width=True,
-                    )
-
-                growth_df = build_dividend_growth_tracker(analyzed_div)
-                if not growth_df.empty:
-                    st.markdown("#### Dividend growth tracker")
-                    st.plotly_chart(
-                        build_dividend_growth_tracker_chart(growth_df),
-                        use_container_width=True,
-                    )
-                    growth_show = growth_df.rename(
-                        columns={
-                            "ticker_yahoo": "Ticker",
-                            "current_rate": "Current rate",
-                            "previous_rate": "Previous rate",
-                            "growth_pct": "Growth %",
-                            "status": "Status",
-                        }
-                    ).copy()
-                    growth_show["Growth %"] = growth_show["Growth %"].round(2)
-                    st.dataframe(growth_show, use_container_width=True, hide_index=True)
