@@ -14,6 +14,7 @@ from core.concentration import (
     concentration_history_from_snapshots,
 )
 from core.pnl_breakdown import compute_pnl_breakdown
+from core.fx_decomposition import compute_fx_decomposition, summarize_fx_decomposition
 from core.position_risk import build_position_risk_data
 from core.risk_metrics import (
     DEFAULT_RISK_FREE,
@@ -29,11 +30,13 @@ from core.session import (
     get_report,
     set_selected_ticker,
 )
+from core.transactions import parse_cash_operations_trades
 from ui.chart_navigation import render_navigable_chart
 from ui.charts import build_allocation_pie, build_pnl_bar_chart, build_portfolio_treemap
 from ui.formatters import format_currency, pnl_delta_color
 from ui.portfolio_filters import apply_portfolio_filters, render_portfolio_filters
 from ui.pnl_charts import build_pnl_waterfall_chart
+from ui.fx_charts import build_fx_attribution_bars, build_fx_waterfall_chart
 from ui.risk_charts import (
     build_concentration_chart,
     build_correlation_heatmap,
@@ -209,6 +212,50 @@ with st.expander("💧 Wodospad P&L", expanded=False):
             "Całkowity wynik = niezrealizowany + zrealizowany + dywidendy − podatek. "
             "Podatek to szacunek edukacyjny — patrz zakładka Historia → Podatek Belki."
         )
+
+with st.expander("💱 Dekompozycja FX (cena vs waluta)", expanded=False):
+    trades = None
+    if report.cash_operations is not None and not report.cash_operations.empty:
+        trades = parse_cash_operations_trades(report.cash_operations)
+    fx_df = compute_fx_decomposition(
+        analyzed,
+        trades=trades,
+        account_currency=report.account_currency,
+    )
+    fx_summary = summarize_fx_decomposition(fx_df)
+    if not fx_summary.has_data:
+        st.info("Brak danych do dekompozycji FX.")
+    elif fx_summary.foreign_positions == 0:
+        st.info(
+            f"Wszystkie pozycje są w walucie wyświetlania ({currency}) — "
+            "efekt kursowy wynosi 0 (cały PnL to efekt ceny)."
+        )
+        st.plotly_chart(build_fx_waterfall_chart(fx_summary), use_container_width=True)
+    else:
+        st.plotly_chart(build_fx_waterfall_chart(fx_summary), use_container_width=True)
+        f1, f2, f3 = st.columns(3)
+        with f1:
+            st.metric("Z ceny", format_currency(fx_summary.price_effect, currency))
+        with f2:
+            st.metric("Z waluty (FX)", format_currency(fx_summary.fx_effect, currency))
+        with f3:
+            st.metric("PnL łącznie", format_currency(fx_summary.total_pnl, currency))
+        st.plotly_chart(
+            build_fx_attribution_bars(fx_df, currency),
+            use_container_width=True,
+        )
+        if fx_summary.used_trade_rates:
+            st.caption(
+                "Kurs zakupu szacowany z **Cash Operations** (Amount / koszt w walucie instrumentu). "
+                "Efekt ceny = pnl_native × kurs zakupu; efekt FX = PnL − efekt ceny. "
+                "Bez dodatkowych zapytań sieciowych."
+            )
+        else:
+            st.caption(
+                "Kurs zakupu ≈ position_cost / cost_native (bieżący kurs z analyzera). "
+                "Przy braku Amount w Cash Operations efekt FX jest bliski zeru — "
+                "wgraj natywny eksport XTB z historią transakcji, aby zobaczyć wpływ kursu."
+            )
 
 with st.expander("📊 Koncentracja (HHI / Top-N)", expanded=False):
     with st.spinner("Liczenie koncentracji…"):

@@ -51,6 +51,7 @@ def main() -> int:
         "core.dividend_calendar",
         "core.concentration",
         "core.pnl_breakdown",
+        "core.fx_decomposition",
         "core.benchmark_risk",
         "core.performance_analytics",
         "core.position_risk",
@@ -72,6 +73,7 @@ def main() -> int:
         "ui.allocation_charts",
         "ui.risk_charts",
         "ui.pnl_charts",
+        "ui.fx_charts",
     ]
 
     for name in modules:

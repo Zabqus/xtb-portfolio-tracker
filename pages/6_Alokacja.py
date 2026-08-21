@@ -13,8 +13,10 @@ from core.allocation import (
     get_currency_exposure,
 )
 from core.analyzer import portfolio_summary
+from core.fx_decomposition import compute_fx_decomposition, summarize_fx_decomposition
 from core.rebalance import compute_rebalance, normalize_targets, suggest_cash_allocation
 from core.session import get_analyzed_open, get_report
+from core.transactions import parse_cash_operations_trades
 from ui.allocation_charts import (
     REGION_COLORS,
     build_breakdown_bar,
@@ -22,6 +24,7 @@ from ui.allocation_charts import (
     build_rebalance_chart,
 )
 from ui.formatters import format_currency
+from ui.fx_charts import build_fx_attribution_bars, build_fx_waterfall_chart
 from ui.plotly_theme import style_figure
 from ui.sidebar import render_import_sidebar
 from ui.theme import bootstrap_page
@@ -323,6 +326,68 @@ else:
                 legend_title="Waluta instr.",
             )
             st.plotly_chart(style_figure(fig_acc), use_container_width=True)
+
+st.divider()
+st.subheader("💱 Dekompozycja FX")
+st.caption(
+    "Ile niezrealizowanego PnL pochodzi z ruchu **ceny** instrumentu, a ile z ruchu **kursu waluty**. "
+    "Przydatne przy kontach EUR/PLN i akcjach USD — oddziela dobór spółek od szczęścia kursowego."
+)
+
+report_fx = get_report()
+trades_fx = None
+if (
+    report_fx is not None
+    and report_fx.cash_operations is not None
+    and not report_fx.cash_operations.empty
+):
+    trades_fx = parse_cash_operations_trades(report_fx.cash_operations)
+
+fx_df = compute_fx_decomposition(
+    analyzed,
+    trades=trades_fx,
+    account_currency=report_fx.account_currency if report_fx else "EUR",
+)
+fx_summary = summarize_fx_decomposition(fx_df)
+
+if not fx_summary.has_data:
+    st.info("Brak danych do dekompozycji FX.")
+elif fx_summary.foreign_positions == 0:
+    st.info(
+        f"Wszystkie pozycje są w walucie wyświetlania ({currency}) — efekt kursowy = 0."
+    )
+else:
+    fx_c1, fx_c2 = st.columns(2)
+    with fx_c1:
+        st.plotly_chart(build_fx_waterfall_chart(fx_summary), use_container_width=True)
+    with fx_c2:
+        m1, m2, m3 = st.columns(3)
+        with m1:
+            st.metric("Z ceny", format_currency(fx_summary.price_effect, currency))
+        with m2:
+            st.metric("Z waluty", format_currency(fx_summary.fx_effect, currency))
+        with m3:
+            st.metric("Razem", format_currency(fx_summary.total_pnl, currency))
+        share = (
+            abs(fx_summary.fx_effect) / (abs(fx_summary.price_effect) + abs(fx_summary.fx_effect)) * 100
+            if (abs(fx_summary.price_effect) + abs(fx_summary.fx_effect)) > 0
+            else 0.0
+        )
+        st.caption(
+            f"Udział |efektu FX| w sumie składowych: **{share:.0f}%**. "
+            f"Pozycje w obcej walucie: {fx_summary.foreign_positions}."
+        )
+    st.plotly_chart(build_fx_attribution_bars(fx_df, currency), use_container_width=True)
+    if fx_summary.used_trade_rates:
+        st.caption(
+            "Kurs zakupu z Cash Operations (Amount). "
+            "Efekt ceny = pnl_native × kurs zakupu; efekt FX = PnL − efekt ceny."
+        )
+    else:
+        st.caption(
+            "Bez Amount w Cash Operations kurs zakupu ≈ bieżący (position_cost / cost_native) "
+            "— efekt FX wtedy bliski zeru."
+        )
 
 st.divider()
 st.subheader("Szczegóły per pozycja")

@@ -80,6 +80,8 @@ def parse_cash_operations_trades(cash_ops: pd.DataFrame) -> pd.DataFrame:
         }
         if account_label is not None and pd.notna(account_label):
             row_data["account_label"] = str(account_label)
+        if "account_currency" in row.index and pd.notna(row.get("account_currency")):
+            row_data["account_currency"] = str(row["account_currency"]).upper()
         rows.append(row_data)
 
     if not rows:

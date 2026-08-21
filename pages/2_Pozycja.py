@@ -2,12 +2,14 @@
 Podstrona: głęboka analiza pojedynczej pozycji (wykres, fundamenty, benchmark, timing).
 """
 
+import pandas as pd
 import streamlit as st
 
 from core.analyzer import portfolio_summary
 from core.benchmark import build_performance_comparison, resolve_benchmark
 from core.analyst_consensus import fetch_analyst_consensus
 from core.fundamentals import fetch_fundamentals, format_market_cap
+from core.fx_decomposition import compute_fx_decomposition, summarize_fx_decomposition
 from core.range_52w import range_position_52w
 from ui.analyst_consensus import render_analyst_consensus
 from core.history import PERIOD_OPTIONS, fetch_price_history
@@ -16,10 +18,13 @@ from core.session import (
     get_analyzed_open,
     get_display_currency,
     get_position_row,
+    get_report,
     get_selected_ticker,
     set_selected_ticker,
 )
+from core.transactions import parse_cash_operations_trades
 from ui.formatters import format_currency, pnl_delta_color
+from ui.fx_charts import build_fx_waterfall_chart
 from ui.position_charts import (
     build_benchmark_overlay_chart,
     build_price_drawdown_chart,
@@ -114,6 +119,57 @@ with m4:
         st.metric("Benchmark", bench_name, delta=f"{weight_pct:.1f}% portfela")
     else:
         st.metric("Benchmark", bench_name)
+
+# --- Dekompozycja FX dla pozycji w obcej walucie ---
+display_ccy = get_display_currency()
+if str(currency).upper() != str(display_ccy).upper():
+    report_pos = get_report()
+    trades_pos = None
+    if (
+        report_pos is not None
+        and report_pos.cash_operations is not None
+        and not report_pos.cash_operations.empty
+    ):
+        trades_pos = parse_cash_operations_trades(report_pos.cash_operations)
+    pos_mask = analyzed["ticker_xtb"] == selected
+    pos_slice = analyzed.loc[pos_mask].copy()
+    pos_slice.attrs["display_currency"] = analyzed.attrs.get("display_currency", display_ccy)
+    pos_slice.attrs["fx_rates"] = analyzed.attrs.get("fx_rates", {})
+    pos_fx = compute_fx_decomposition(
+        pos_slice,
+        trades=trades_pos,
+        account_currency=report_pos.account_currency if report_pos else "EUR",
+    )
+    if not pos_fx.empty and pd.notna(pos_fx.iloc[0].get("pnl_price")):
+        rfx = pos_fx.iloc[0]
+        with st.expander("💱 Dekompozycja FX tej pozycji", expanded=True):
+            x1, x2, x3, x4 = st.columns(4)
+            with x1:
+                st.metric("Z ceny", format_currency(float(rfx["pnl_price"]), display_ccy))
+            with x2:
+                st.metric("Z waluty", format_currency(float(rfx["pnl_fx"]), display_ccy))
+            with x3:
+                st.metric("PnL łącznie", format_currency(float(rfx["pnl_fx_total"]), display_ccy))
+            with x4:
+                rate = rfx.get("fx_rate_purchase")
+                st.metric(
+                    "Kurs zakupu",
+                    f"{float(rate):.4f}" if pd.notna(rate) else "—",
+                    help=f"1 {currency} → {display_ccy} (szacowany)",
+                )
+            fx_one = summarize_fx_decomposition(pos_fx)
+            st.plotly_chart(build_fx_waterfall_chart(fx_one), use_container_width=True)
+            src = str(rfx.get("fx_rate_source", ""))
+            if src == "trades":
+                st.caption(
+                    "Ile z PnL pochodzi z ruchu ceny spółki, a ile z kursu waluty — "
+                    "kurs zakupu z Cash Operations (Amount)."
+                )
+            else:
+                st.caption(
+                    "Kurs zakupu z analyzera (position_cost / cost_native). "
+                    "Przy natywnym eksporcie XTB z Amount efekt FX jest dokładniejszy."
+                )
 
 period_label = st.radio(
     "Horyzont czasowy",

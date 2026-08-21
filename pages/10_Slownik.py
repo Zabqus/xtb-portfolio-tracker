@@ -180,6 +180,10 @@ TERMS: list[tuple[str, str, str]] = [
     ("Waluty i podatki", "Kurs FX",
      "Kurs wymiany walut (z Yahoo, cache ~1h) używany do przeliczeń między walutą "
      "instrumentu, konta i wyświetlania."),
+    ("Waluty i podatki", "Dekompozycja FX",
+     "Rozbicie niezrealizowanego PnL na **efekt ceny** (ruch notowań w walucie instrumentu) "
+     "i **efekt waluty** (zmiana kursu FX). Kurs zakupu ≈ position_cost / cost_native albo "
+     "z Amount w Cash Operations; efekt ceny = pnl_native × kurs zakupu; efekt FX = PnL − efekt ceny."),
     ("Waluty i podatki", "Podatek Belki (19%)",
      "Polski podatek 19% od zrealizowanych zysków kapitałowych i dywidend. Aplikacja podaje "
      "szacunek per rok podatkowy – orientacyjnie, nie jako porada podatkowa."),

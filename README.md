@@ -28,6 +28,7 @@ xtb_portfolio_tracker/
 │   ├── market_data.py, history.py, currencies.py, fundamentals.py
 │   ├── returns.py, portfolio_benchmark.py, risk_metrics.py
 │   ├── dashboard_kpis.py, concentration.py, pnl_breakdown.py
+│   ├── fx_decomposition.py      # efekt ceny vs efekt FX
 │   ├── performance_analytics.py, benchmark_risk.py, position_risk.py
 │   ├── trade_analytics.py, trade_excursions.py, trade_tags.py
 │   ├── analyst_consensus.py, consensus_snapshots.py
@@ -44,7 +45,7 @@ xtb_portfolio_tracker/
 │   ├── kpi_dashboard.py, sparklines.py, portfolio_filters.py
 │   ├── charts.py, chart_navigation.py, position_charts.py
 │   ├── history_charts.py, analytics_charts.py, technical_charts.py
-│   ├── returns_charts.py, risk_charts.py, pnl_charts.py
+│   ├── returns_charts.py, risk_charts.py, pnl_charts.py, fx_charts.py
 │   ├── allocation_charts.py, watchlist_charts.py
 │   ├── consensus_charts.py, analyst_consensus.py
 │   └── …
@@ -90,6 +91,7 @@ Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → przeglą
 - **Filtry globalne** – sektor, region, konto, zakres ROI (wykresy + tabela)
 - **Wykresy** – pie/bar lub treemap; klik w ticker → strona Pozycja
 - **Wodospad P&L** – niezrealizowany + zrealizowany + dywidendy − szacunek Belki
+- **Dekompozycja FX** – PnL na efekt ceny vs efekt waluty (wodospad + per pozycja); kurs zakupu z analyzera lub Cash Operations
 - **Koncentracja** – HHI, Top-5/Top-10, efektywna liczba pozycji
 - **Mapa ryzyka pozycji** – waga × ROI × zmienność 90d
 - **Metryki ryzyka** – volatility, max DD, Sharpe, Calmar, rolling risk, macierz korelacji (ostrzeżenie ≥ 0.9)
@@ -114,7 +116,7 @@ Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → przeglą
 
 ### Alokacja, watchlist, alerty
 
-- **Alokacja** – sektor / region (USA / EU / PL) + ekspozycja walutowa (FX)
+- **Alokacja** – sektor / region (USA / EU / PL) + ekspozycja walutowa (FX) + dekompozycja FX
 - **Rebalancing** – docelowe udziały, dryf, sugestie dokupień i rozdział nowej gotówki
 - **Watchlist** – symbole spoza portfela, zwroty 1M/3M/1Y vs średnia ważona portfela
 - **Alerty ROI** – próg ±X% z auto-odświeżaniem
