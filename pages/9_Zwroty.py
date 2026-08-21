@@ -92,7 +92,7 @@ with tab_returns:
     else:
         with st.spinner("Budowanie timeline i liczenie zwrotów…"):
             timeline = get_portfolio_timeline()
-            twr = compute_twr(timeline, report.cash_operations)
+            twr = compute_twr(timeline, report.cash_operations, target_currency=display_currency)
 
             mwr = None
             if not report.is_merged:
@@ -235,7 +235,7 @@ with tab_benchmark:
     else:
         with st.spinner("Liczenie TWR…"):
             timeline = get_portfolio_timeline()
-            twr = compute_twr(timeline, report.cash_operations)
+            twr = compute_twr(timeline, report.cash_operations, target_currency=display_currency)
 
         if not twr.has_data or twr.index.empty:
             st.info("Za mało danych timeline, aby zbudować krzywą porównawczą.")
@@ -353,7 +353,7 @@ with tab_attribution:
     else:
         with st.spinner("Liczenie TWR i atrybucji…"):
             timeline = get_portfolio_timeline()
-            twr = compute_twr(timeline, report.cash_operations)
+            twr = compute_twr(timeline, report.cash_operations, target_currency=display_currency)
             analyzed = get_analyzed_open()
 
         if not twr.has_data or twr.index.empty:
@@ -428,7 +428,7 @@ with tab_scenarios:
     if report.cash_operations is not None:
         with st.spinner("Liczenie TWR…"):
             timeline = get_portfolio_timeline()
-            twr = compute_twr(timeline, report.cash_operations)
+            twr = compute_twr(timeline, report.cash_operations, target_currency=display_currency)
 
     st.markdown("#### Stress test — spadek top pozycji")
     if analyzed is None or analyzed.empty:

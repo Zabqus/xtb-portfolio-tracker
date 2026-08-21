@@ -63,7 +63,7 @@ default_return = DEFAULT_RETURN
 inferred_contrib: float | None = None
 if report.cash_operations is not None:
     timeline = get_portfolio_timeline()
-    twr = compute_twr(timeline, report.cash_operations)
+    twr = compute_twr(timeline, report.cash_operations, target_currency=currency)
     if twr.twr_annualized_pct is not None:
         default_return = round(float(twr.twr_annualized_pct), 1)
     inferred_contrib = infer_monthly_contribution(

@@ -40,6 +40,9 @@ SUPPORTED_CURRENCIES = ("PLN", "EUR", "USD", "GBP")
 def currency_from_ticker(ticker: str) -> str:
     """Przypisuje walutę notowań na podstawie sufiksu symbolu XTB."""
     normalized = str(ticker).strip().upper()
+    # Multi-account dopina „ [PLN]” / „ [EUR]” do ticker_xtb — odfiltruj przed mapowaniem.
+    if " [" in normalized:
+        normalized = normalized.split(" [", 1)[0].strip()
     for suffix, currency in sorted(SUFFIX_CURRENCY.items(), key=lambda x: -len(x[0])):
         if normalized.endswith(suffix):
             return currency

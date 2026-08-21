@@ -12,8 +12,10 @@ import pandas as pd
 
 from core.alerts import compute_roi_alerts
 from core.analyzer import analyze_portfolio, portfolio_summary
+from core.currencies import convert_amount, fetch_rates_to_currency
 from core.dividends import dividends_summary, parse_dividends
 from core.importer import XTBReport
+from core.multi_account import MULTI_ACCOUNT_CURRENCY
 from core.returns import compute_mwr, compute_twr
 from core.risk_metrics import DEFAULT_RISK_FREE, compute_drawdown_series, compute_risk_metrics
 from core.session import get_trade_analytics
@@ -110,7 +112,11 @@ def compute_dashboard_kpis(
     )
 
     has_timeline = timeline is not None and not timeline.empty and report.cash_operations is not None
-    twr = compute_twr(timeline, report.cash_operations) if has_timeline else None
+    twr = (
+        compute_twr(timeline, report.cash_operations, target_currency=currency)
+        if has_timeline
+        else None
+    )
     twr_index = twr.index if twr and twr.has_data else pd.DataFrame()
 
     # — TWR YTD / 1Y —
@@ -234,21 +240,55 @@ def compute_dashboard_kpis(
     # — dywidendy YTD —
     div_ytd = 0.0
     div_spark: list[float] = []
+    div_label_ccy = currency
     if report.cash_operations is not None:
         div_df = parse_dividends(report.cash_operations)
-        div_stats = dividends_summary(div_df, current_year=datetime.now().year)
-        div_ytd = float(div_stats["current_year"])
         if not div_df.empty:
-            cy = div_df[div_df["year"] == datetime.now().year].sort_values("date")
-            if not cy.empty:
-                div_spark = _tail_values(cy["amount"].cumsum(), days)
+            default_ccy = (
+                currency
+                if report.account_currency == MULTI_ACCOUNT_CURRENCY
+                else report.account_currency
+            )
+            currencies = {currency, str(default_ccy).upper()}
+            if "currency" in div_df.columns:
+                currencies.update(
+                    str(c).upper()
+                    for c in div_df["currency"].dropna().unique()
+                    if str(c).upper() not in ("MULTI", "", "<NA>", "NAN", "NONE")
+                )
+            if "account_currency" in report.cash_operations.columns:
+                currencies.update(
+                    str(c).upper()
+                    for c in report.cash_operations["account_currency"].dropna().unique()
+                    if str(c).upper() not in ("MULTI", "", "<NA>", "NAN", "NONE")
+                )
+            rates = fetch_rates_to_currency(currencies, currency)
+
+            amounts_display: list[float] = []
+            for _, row in div_df.iterrows():
+                src = str(row.get("currency") or default_ccy).upper()
+                if src in ("MULTI", "", "<NA>", "NAN", "NONE"):
+                    src = str(default_ccy).upper()
+                amounts_display.append(
+                    convert_amount(float(row["amount"]), src, currency, rates)
+                )
+            div_df = div_df.copy()
+            div_df["amount_display"] = amounts_display
+            cy = datetime.now().year
+            div_ytd = float(div_df.loc[div_df["year"] == cy, "amount_display"].sum())
+            cy_rows = div_df[div_df["year"] == cy].sort_values("date")
+            if not cy_rows.empty:
+                div_spark = _tail_values(cy_rows["amount_display"].cumsum(), days)
+        else:
+            div_stats = dividends_summary(div_df, current_year=datetime.now().year)
+            div_ytd = float(div_stats["current_year"])
 
     metrics.append(
         KpiMetric(
             label="Dywidendy YTD",
-            value=f"{div_ytd:,.2f} {report.account_currency}",
+            value=f"{div_ytd:,.2f} {div_label_ccy}",
             sparkline=div_spark,
-            help_text="Suma wypłat dywidend w bieżącym roku (waluta konta XTB).",
+            help_text="Suma wypłat dywidend w bieżącym roku (w walucie wyświetlania).",
         )
     )
 

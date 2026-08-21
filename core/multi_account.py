@@ -40,11 +40,16 @@ def _tag_open_positions(df: pd.DataFrame, report: XTBReport, label: str) -> pd.D
     return out
 
 
-def _tag_closed_positions(df: pd.DataFrame | None, label: str) -> pd.DataFrame | None:
+def _tag_closed_positions(
+    df: pd.DataFrame | None,
+    label: str,
+    account_currency: str,
+) -> pd.DataFrame | None:
     if df is None or df.empty:
         return df
     out = df.copy()
     out["account_label"] = label
+    out["account_currency"] = account_currency
     if "ticker_xtb" in out.columns:
         out["ticker_xtb"] = out["ticker_xtb"].map(lambda t: _disambiguate_ticker_xtb(str(t), label))
     return out
@@ -75,10 +80,10 @@ def merge_timelines(timelines: list[pd.DataFrame]) -> pd.DataFrame:
             continue
         part["date"] = pd.to_datetime(part["date"]).dt.normalize()
         part = part.set_index("date")
-        for col in ("market_value", "cost_basis", "unrealized_pnl"):
+        for col in ("market_value", "cost_basis", "unrealized_pnl", "position_count"):
             if col not in part.columns:
                 part[col] = 0.0
-        agg = part[["market_value", "cost_basis"]].copy()
+        agg = part[["market_value", "cost_basis", "position_count"]].copy()
         if "unrealized_pnl" in part.columns:
             agg["unrealized_pnl"] = part["unrealized_pnl"]
         else:
@@ -94,8 +99,7 @@ def merge_timelines(timelines: list[pd.DataFrame]) -> pd.DataFrame:
 
     out = merged.reset_index()
     out["unrealized_pnl"] = out["market_value"] - out["cost_basis"]
-    if "position_count" not in out.columns:
-        out["position_count"] = pd.NA
+    out["position_count"] = out["position_count"].round().astype("Int64")
     return out.sort_values("date").reset_index(drop=True)
 
 
@@ -126,7 +130,9 @@ def merge_reports(reports: list[XTBReport]) -> XTBReport:
         filenames[short] = report.filename
 
         open_parts.append(_tag_open_positions(report.open_positions, report, short))
-        closed_parts.append(_tag_closed_positions(report.closed_positions, short))
+        closed_parts.append(
+            _tag_closed_positions(report.closed_positions, short, report.account_currency)
+        )
         tagged_cash = _tag_cash_operations(report.cash_operations, short)
         if tagged_cash is not None and not tagged_cash.empty:
             tagged_cash["account_currency"] = report.account_currency

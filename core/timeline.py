@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 
+from core.currencies import convert_amount, currency_from_ticker, fetch_rates_to_currency
 from core.transactions import parse_cash_operations_trades
 
 MIN_POSITION_QTY = 1e-6
@@ -38,6 +39,29 @@ def _apply_trade(holdings: dict[str, float], costs: dict[str, float], row: pd.Se
         if holdings[ticker] <= MIN_POSITION_QTY:
             holdings[ticker] = 0.0
             costs[ticker] = 0.0
+
+
+def _normalize_close_price(ticker: str, price: float, currency: str) -> float:
+    """Yahoo dla `.L` często podaje GBp (pensy) — sprowadź do GBP jak w analyzerze."""
+    if (
+        str(ticker).upper().endswith(".L")
+        and str(currency).upper() == "GBP"
+        and price is not None
+        and np.isfinite(price)
+    ):
+        return float(price) / 100.0
+    return float(price)
+
+
+def _to_target(
+    amount: float,
+    source_currency: str,
+    target_currency: str | None,
+    rates: dict[str, float],
+) -> float:
+    if target_currency is None:
+        return float(amount)
+    return convert_amount(amount, source_currency, target_currency, rates)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -77,15 +101,26 @@ def fetch_close_matrix(
     return matrix.ffill()
 
 
-def build_portfolio_timeline(cash_ops: pd.DataFrame) -> pd.DataFrame:
+def build_portfolio_timeline(
+    cash_ops: pd.DataFrame,
+    target_currency: str | None = None,
+) -> pd.DataFrame:
     """
     Buduje dzienny timeline: market_value, cost_basis, position_count.
 
     Wartość rynkowa = suma (ilość × cena zamknięcia) dla otwartych pozycji.
+    Gdy podano ``target_currency``, każda pozycja jest przeliczana z waluty
+    instrumentu (multi-account / mieszane instrumenty).
     """
     trades = parse_cash_operations_trades(cash_ops)
     if trades.empty:
         return pd.DataFrame()
+
+    target = target_currency.upper() if target_currency else None
+    currencies = set(trades["currency"].dropna().astype(str).str.upper()) if "currency" in trades.columns else set()
+    if target:
+        currencies.add(target)
+    rates = fetch_rates_to_currency(currencies or {target or "PLN"}, target or "PLN") if target else {}
 
     start = trades["trade_date"].min()
     end = trades["trade_date"].max()
@@ -94,14 +129,18 @@ def build_portfolio_timeline(cash_ops: pd.DataFrame) -> pd.DataFrame:
     holdings: dict[str, float] = {}
     costs: dict[str, float] = {}
     last_prices: dict[str, float] = {}
+    ticker_currency: dict[str, str] = {}
     snapshots: list[dict] = []
 
     trade_by_date = trades.groupby("trade_date", sort=True)
     for day in calendar:
         if day in trade_by_date.groups:
             for _, row in trade_by_date.get_group(day).iterrows():
+                yahoo = row["ticker_yahoo"]
+                ccy = str(row.get("currency") or currency_from_ticker(str(row["ticker_xtb"]))).upper()
+                ticker_currency[yahoo] = ccy
                 _apply_trade(holdings, costs, row)
-                last_prices[row["ticker_yahoo"]] = float(row["price"])
+                last_prices[yahoo] = float(row["price"])
 
         active = {t: q for t, q in holdings.items() if q > MIN_POSITION_QTY}
         if not active:
@@ -115,7 +154,11 @@ def build_portfolio_timeline(cash_ops: pd.DataFrame) -> pd.DataFrame:
             )
             continue
 
-        cost_basis = sum(costs.get(t, 0.0) for t in active)
+        cost_basis_native = {t: costs.get(t, 0.0) for t in active}
+        cost_basis = sum(
+            _to_target(cost_basis_native[t], ticker_currency.get(t, "EUR"), target, rates)
+            for t in active
+        )
         avg_costs = {t: costs[t] / active[t] for t in active if active[t] > 0}
         snapshots.append(
             {
@@ -126,6 +169,7 @@ def build_portfolio_timeline(cash_ops: pd.DataFrame) -> pd.DataFrame:
                 "holdings": active.copy(),
                 "last_prices": last_prices.copy(),
                 "avg_costs": avg_costs,
+                "ticker_currency": {t: ticker_currency.get(t, "EUR") for t in active},
             }
         )
 
@@ -158,21 +202,23 @@ def build_portfolio_timeline(cash_ops: pd.DataFrame) -> pd.DataFrame:
         valid = 0
         last_px = row.get("last_prices") if isinstance(row.get("last_prices"), dict) else {}
         avg_costs = row.get("avg_costs") if isinstance(row.get("avg_costs"), dict) else {}
+        ccy_map = row.get("ticker_currency") if isinstance(row.get("ticker_currency"), dict) else {}
 
         for ticker, qty in h.items():
+            ccy = str(ccy_map.get(ticker, "EUR")).upper()
             px = None
             if not price_matrix.empty and ticker in price_matrix.columns:
                 prices = price_matrix[ticker]
                 available = prices.loc[:day].dropna()
                 if not available.empty:
-                    px = float(available.iloc[-1])
+                    px = _normalize_close_price(ticker, float(available.iloc[-1]), ccy)
             if px is None and ticker in last_px:
                 px = float(last_px[ticker])
             if px is None and ticker in avg_costs:
                 px = float(avg_costs[ticker])
 
             if px is not None:
-                total += qty * px
+                total += _to_target(qty * px, ccy, target, rates)
                 valid += 1
 
         if valid == 0:
@@ -182,5 +228,10 @@ def build_portfolio_timeline(cash_ops: pd.DataFrame) -> pd.DataFrame:
 
     timeline["market_value"] = market_values
     timeline["unrealized_pnl"] = timeline["market_value"] - timeline["cost_basis"]
+    if target:
+        timeline.attrs["display_currency"] = target
 
-    return timeline.drop(columns=["holdings", "last_prices", "avg_costs"], errors="ignore")
+    return timeline.drop(
+        columns=["holdings", "last_prices", "avg_costs", "ticker_currency"],
+        errors="ignore",
+    )

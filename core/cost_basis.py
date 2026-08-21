@@ -28,7 +28,9 @@ def build_cost_basis_history(trades: pd.DataFrame) -> pd.DataFrame:
     events: list[dict] = []
 
     for _, row in sorted_trades.iterrows():
-        ticker = row["ticker_yahoo"]
+        # ticker_xtb (z sufiksem konta w multi-account) — nie yahoo,
+        # żeby te same instrumenty na PLN i EUR nie mieszały FIFO.
+        ticker = row["ticker_xtb"]
         side = row["side"]
         qty = float(row["quantity"])
         price = float(row["price"])
@@ -63,8 +65,8 @@ def build_cost_basis_history(trades: pd.DataFrame) -> pd.DataFrame:
         events.append(
             {
                 "trade_time": row["trade_time"],
-                "ticker_xtb": row["ticker_xtb"],
-                "ticker_yahoo": ticker,
+                "ticker_xtb": ticker,
+                "ticker_yahoo": row["ticker_yahoo"],
                 "event": event,
                 "side": side,
                 "trade_qty": qty,

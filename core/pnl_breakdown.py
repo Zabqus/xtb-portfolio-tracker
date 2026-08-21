@@ -34,7 +34,10 @@ def _sum_closed_pnl(
         return 0.0
     total = 0.0
     for _, row in closed.dropna(subset=["pnl"]).iterrows():
-        ccy = str(row.get("currency", target_currency))
+        # Profit/Loss w eksporcie XTB jest w walucie konta, nie instrumentu.
+        ccy = str(row.get("account_currency") or row.get("currency") or target_currency).upper()
+        if ccy in ("MULTI", "", "<NA>", "NAN", "NONE"):
+            ccy = target_currency
         total += convert_amount(float(row["pnl"]), ccy, target_currency, rates)
     return total
 
@@ -83,8 +86,13 @@ def compute_pnl_breakdown(
         str(c).upper()
         for c in analyzed.get("currency", pd.Series(dtype="object")).dropna().unique()
     )
-    if closed is not None and "currency" in closed.columns:
-        needed_currencies.update(str(c).upper() for c in closed["currency"].dropna().unique())
+    if closed is not None:
+        if "account_currency" in closed.columns:
+            needed_currencies.update(
+                str(c).upper() for c in closed["account_currency"].dropna().unique()
+            )
+        if "currency" in closed.columns:
+            needed_currencies.update(str(c).upper() for c in closed["currency"].dropna().unique())
     if cash_ops is not None and "account_currency" in cash_ops.columns:
         needed_currencies.update(
             str(c).upper() for c in cash_ops["account_currency"].dropna().unique()

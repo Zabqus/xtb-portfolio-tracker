@@ -8,6 +8,7 @@ import re
 
 import pandas as pd
 
+from core.currencies import currency_from_ticker
 from core.importer_maps import map_ticker_to_yahoo
 
 XTB_TRADE_TYPES = ("Stock purchase", "Stock sell")
@@ -71,6 +72,7 @@ def parse_cash_operations_trades(cash_ops: pd.DataFrame) -> pd.DataFrame:
                 "trade_date": row["trade_time"].normalize(),
                 "ticker_xtb": ticker_xtb,
                 "ticker_yahoo": map_ticker_to_yahoo(raw_ticker_xtb),
+                "currency": currency_from_ticker(raw_ticker_xtb),
                 "side": side,
                 "quantity": quantity,
                 "price": price,

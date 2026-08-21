@@ -68,7 +68,10 @@ closed_n = len(report.closed_positions) if report.closed_positions is not None e
 
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Tryb", "Multi-account" if report.is_merged else "Jedno konto")
-m2.metric("Waluta konta", report.account_currency)
+m2.metric(
+    "Waluta konta",
+    ", ".join(report.account_labels) if report.is_merged and report.account_labels else report.account_currency,
+)
 m3.metric("Otwarte pozycje", len(report.open_positions))
 m4.metric("Zamknięte pozycje", closed_n)
 

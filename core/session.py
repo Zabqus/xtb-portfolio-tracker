@@ -176,6 +176,8 @@ def set_display_currency(currency: str) -> None:
     st.session_state.display_currency = currency
     st.session_state.analyzed_open = None
     st.session_state.analysis_signature = None
+    st.session_state.portfolio_timeline = None
+    st.session_state.timeline_signature = None
 
 
 def get_analyzed_open() -> pd.DataFrame | None:
@@ -221,7 +223,7 @@ def get_position_row(ticker_xtb: str) -> pd.Series | None:
     return analyzed.loc[mask].iloc[0]
 
 
-def _build_merged_timeline(report: XTBReport) -> pd.DataFrame:
+def _build_merged_timeline(report: XTBReport, display_currency: str) -> pd.DataFrame:
     if report.cash_operations is None or not report.account_labels:
         return pd.DataFrame()
     timelines: list[pd.DataFrame] = []
@@ -229,7 +231,7 @@ def _build_merged_timeline(report: XTBReport) -> pd.DataFrame:
         subset = report.cash_operations[report.cash_operations["account_label"] == label]
         if subset.empty:
             continue
-        tl = build_portfolio_timeline(subset)
+        tl = build_portfolio_timeline(subset, target_currency=display_currency)
         if not tl.empty:
             timelines.append(tl)
     return merge_timelines(timelines)
@@ -241,7 +243,8 @@ def get_portfolio_timeline() -> pd.DataFrame | None:
     if report is None or report.cash_operations is None:
         return None
 
-    signature = st.session_state.file_signature
+    display_currency = get_display_currency()
+    signature = f"{st.session_state.file_signature}:{display_currency}"
     if (
         st.session_state.portfolio_timeline is not None
         and st.session_state.timeline_signature == signature
@@ -249,9 +252,12 @@ def get_portfolio_timeline() -> pd.DataFrame | None:
         return st.session_state.portfolio_timeline
 
     if report.is_merged:
-        timeline = _build_merged_timeline(report)
+        timeline = _build_merged_timeline(report, display_currency)
     else:
-        timeline = build_portfolio_timeline(report.cash_operations)
+        timeline = build_portfolio_timeline(
+            report.cash_operations,
+            target_currency=display_currency,
+        )
 
     st.session_state.portfolio_timeline = timeline
     st.session_state.timeline_signature = signature

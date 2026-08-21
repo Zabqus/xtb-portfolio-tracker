@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from core.currencies import convert_amount, currency_from_ticker, fetch_rates_to_currency
 from core.transactions import parse_cash_operations_trades
 
 # Typy operacji w Cash Operations traktowane jako zewnętrzne przepływy inwestora.
@@ -229,28 +230,59 @@ def compute_mwr(
 
 # ─────────────────────────── TWR ───────────────────────────
 
-def _daily_net_investment(cash_ops: pd.DataFrame) -> pd.Series:
+def _daily_net_investment(
+    cash_ops: pd.DataFrame,
+    target_currency: str | None = None,
+) -> pd.Series:
     """
     Dzienny przepływ kapitału do/z pozycji w jednostkach timeline
     (Σ kupno qty×price − Σ sprzedaż qty×price), indeks = data (znormalizowana).
+
+    Gdy podano ``target_currency``, kwoty są przeliczane z waluty instrumentu.
     """
     trades = parse_cash_operations_trades(cash_ops)
     if trades.empty:
         return pd.Series(dtype=float)
-    signed = trades.assign(
-        flow=lambda d: np.where(d["side"] == "OPEN", 1.0, -1.0)
-        * d["quantity"].astype(float)
-        * d["price"].astype(float)
+
+    target = target_currency.upper() if target_currency else None
+    rates: dict[str, float] = {}
+    if target:
+        currencies = set(trades["currency"].dropna().astype(str).str.upper()) if "currency" in trades.columns else set()
+        currencies.add(target)
+        rates = fetch_rates_to_currency(currencies, target)
+
+    signed = trades.copy()
+    native = (
+        np.where(signed["side"] == "OPEN", 1.0, -1.0)
+        * signed["quantity"].astype(float)
+        * signed["price"].astype(float)
     )
+    if target:
+        flow_vals = []
+        for amount, (_, row) in zip(native, signed.iterrows()):
+            ccy = str(row.get("currency") or currency_from_ticker(str(row["ticker_xtb"]))).upper()
+            flow_vals.append(convert_amount(float(amount), ccy, target, rates))
+        signed["flow"] = flow_vals
+    else:
+        signed["flow"] = native
+
     return signed.groupby(signed["trade_date"].dt.normalize())["flow"].sum()
 
 
-def compute_twr(timeline: pd.DataFrame, cash_ops: pd.DataFrame) -> TWRResult:
+def compute_twr(
+    timeline: pd.DataFrame,
+    cash_ops: pd.DataFrame,
+    *,
+    target_currency: str | None = None,
+) -> TWRResult:
     """
     TWR z timeline pozycji, usuwając dzienny dopływ kapitału (kupna/sprzedaże).
 
     Zwrot dnia t: r = (V_t − F_t) / V_{t-1} − 1, gdzie F_t = kapitał wpłacony w dniu t.
     Łączny TWR = Π(1 + r) − 1. Zwraca też indeks wzrostu (start = 100) do wykresów.
+
+    ``target_currency`` powinien być tą samą walutą, w której zbudowano timeline
+    (np. waluta wyświetlania) — wtedy przepływy kupna/sprzedaży są spójne z V_t.
     """
     empty = TWRResult(twr_total_pct=None, twr_annualized_pct=None, days=0)
     if timeline is None or timeline.empty or "market_value" not in timeline.columns:
@@ -262,7 +294,8 @@ def compute_twr(timeline: pd.DataFrame, cash_ops: pd.DataFrame) -> TWRResult:
     if len(df) < 2:
         return empty
 
-    flows = _daily_net_investment(cash_ops)
+    flow_ccy = target_currency or timeline.attrs.get("display_currency")
+    flows = _daily_net_investment(cash_ops, target_currency=flow_ccy)
 
     dates = df["date"].tolist()
     values = df["market_value"].astype(float).tolist()

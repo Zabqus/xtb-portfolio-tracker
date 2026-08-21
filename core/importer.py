@@ -267,10 +267,21 @@ def parse_xtb_report(
     account_number: str | None = None
 
     if name.endswith((".xlsx", ".xls")):
+        if hasattr(file_source, "seek"):
+            file_source.seek(0)
         excel = pd.ExcelFile(file_source)
         if _is_xtb_native_excel(excel.sheet_names):
-            meta = _read_metadata(file_source)
-            cash_ops = _read_cash_operations(file_source)
+            meta = pd.read_excel(
+                excel,
+                sheet_name=XTB_CASH_OPERATIONS_SHEET,
+                header=None,
+                nrows=5,
+            )
+            cash_ops = pd.read_excel(
+                excel,
+                sheet_name=XTB_CASH_OPERATIONS_SHEET,
+                header=XTB_HEADER_ROW,
+            )
             open_raw = _aggregate_open_positions_from_cash_ops(cash_ops)
             tickers = open_raw["ticker"].astype(str).tolist()
             account_number = read_account_number(meta)
@@ -282,9 +293,7 @@ def parse_xtb_report(
             )
 
             if XTB_CLOSED_POSITIONS_SHEET in excel.sheet_names:
-                if hasattr(file_source, "seek"):
-                    file_source.seek(0)
-                closed_positions = _parse_closed_positions_sheet(file_source)
+                closed_positions = _parse_closed_positions_sheet(excel)
 
             return XTBReport(
                 open_positions=open_positions,
@@ -295,6 +304,8 @@ def parse_xtb_report(
                 filename=filename,
             )
 
+        if hasattr(file_source, "seek"):
+            file_source.seek(0)
         raw_df = pd.read_excel(file_source)
         open_positions = _finalize_open_positions(
             _normalize_simple_columns(raw_df),

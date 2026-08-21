@@ -19,6 +19,7 @@ from core.closed_analysis import closed_positions_summary
 from core.cost_basis import get_current_cost_basis
 from core.importer import XTBReport
 from core.timeline import build_portfolio_timeline
+from core.multi_account import merge_timelines
 from core.trade_analytics import TradeAnalyticsSummary, compute_trade_analytics
 from core.transactions import parse_cash_operations_trades
 
@@ -393,7 +394,23 @@ def generate_excel_bytes(
 
     if report.cash_operations is not None:
         try:
-            timeline = build_portfolio_timeline(report.cash_operations)
+            if report.is_merged and report.account_labels:
+                timelines = []
+                for label in report.account_labels:
+                    subset = report.cash_operations[
+                        report.cash_operations["account_label"] == label
+                    ]
+                    if subset.empty:
+                        continue
+                    tl = build_portfolio_timeline(subset, target_currency=currency)
+                    if not tl.empty:
+                        timelines.append(tl)
+                timeline = merge_timelines(timelines)
+            else:
+                timeline = build_portfolio_timeline(
+                    report.cash_operations,
+                    target_currency=currency,
+                )
             trades = parse_cash_operations_trades(report.cash_operations)
             trade_summary, round_trips = compute_trade_analytics(
                 trades, report.closed_positions
