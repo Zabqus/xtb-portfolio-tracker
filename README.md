@@ -34,7 +34,7 @@ xtb_portfolio_tracker/
 │   ├── trade_analytics.py, trade_excursions.py, trade_tags.py
 │   ├── analyst_consensus.py, consensus_snapshots.py
 │   ├── signals.py, signal_snapshots.py, range_52w.py
-│   ├── dividends.py, dividend_calendar.py, tax_harvest.py
+│   ├── dividends.py, dividend_calendar.py, tax_harvest.py, ike_ikze.py
 │   ├── allocation.py, rebalance.py, alerts.py, watchlist.py
 │   ├── snapshots.py, preferences.py, goals.py
 │   ├── technicals.py, timing_score.py, cost_basis.py
@@ -49,6 +49,7 @@ xtb_portfolio_tracker/
 │   ├── returns_charts.py, risk_charts.py, pnl_charts.py, fx_charts.py
 │   ├── allocation_charts.py, watchlist_charts.py
 │   ├── consensus_charts.py, analyst_consensus.py, goals_charts.py
+│   ├── tax_charts.py            # IKE / IKZE vs zwykłe
 │   └── …
 ├── scripts/
 │   └── ci_smoke.py              # Smoke test importów (CI)
@@ -112,7 +113,7 @@ Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → przeglą
 - **MAE / MFE** – maksymalne odchylenie niekorzystne/korzystne w trakcie trzymania
 - **Tagi round-tripów** – ręczne przyczyny wejścia/wyjścia (`trade_tags.json`)
 - **Cost basis** – historia średniej ceny per ticker
-- **Podatek Belki** – szacunek 19% per rok podatkowy + tax-loss harvesting
+- **Podatek Belki** – szacunek 19% per rok podatkowy + tax-loss harvesting + porównanie IKE/IKZE vs zwykłe
 - **Dywidendy** – metryki, kalendarz ex-date, forward yield, projected cashflow, growth tracker
 
 ### Alokacja, watchlist, alerty

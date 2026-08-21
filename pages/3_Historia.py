@@ -28,6 +28,13 @@ from core.session import (
     get_report,
     get_trade_analytics,
 )
+from core.ike_ikze import (
+    IKE_LIMIT_2025,
+    IKZE_LIMIT_2025,
+    IKZE_LIMIT_BIZ_2025,
+    PIT_RATES,
+    compare_accounts,
+)
 from core.tax_harvest import compute_tax_harvest
 from core.trade_analytics import (
     add_trade_efficiency_metrics,
@@ -75,6 +82,7 @@ from ui.history_charts import (
 from ui.returns_charts import build_portfolio_value_drawdown_chart
 from ui.sidebar import render_import_sidebar
 from ui.tables import render_closed_positions_table, render_round_trips_table
+from ui.tax_charts import build_ike_ikze_bars_chart, build_ike_ikze_comparison_chart
 from ui.theme import bootstrap_page, metric_card_style
 
 bootstrap_page()
@@ -839,6 +847,183 @@ with tab_tax:
                 "Nie uwzględnia podatku u źródła, ulg ani umów o unikaniu podwójnego "
                 "opodatkowania."
             )
+
+    # --- IKE / IKZE (nie wymaga Closed Positions) ---
+    st.divider()
+    with st.expander("🇵🇱 IKE / IKZE — optymalizacja podatkowa", expanded=False):
+        st.markdown(
+            "Kalkulator ile realnie zyskujesz, trzymając inwestycje na koncie emerytalnym "
+            "zamiast na zwykłym. Przy tej samej rocznej wpłacie i stopie zwrotu porównujemy "
+            "**zwykłe / IKE / IKZE** na zadanym horyzoncie."
+        )
+        st.caption(
+            "**IKE** — brak Belki (19%) przy wypłacie po 60. r.ż. · "
+            "**IKZE** — wpłata odliczana od PIT (natychmiastowy zwrot = wpłata × stawka); "
+            "przy wypłacie po 65. r.ż. ryczałt 10% od całości. Zwroty PIT reinwestujemy "
+            "na zwykłym (Belka od ich zysków)."
+        )
+
+        lim1, lim2, lim3 = st.columns(3)
+        with lim1:
+            ike_limit = st.number_input(
+                "Limit IKE (zł/rok)",
+                min_value=0.0,
+                value=float(IKE_LIMIT_2025),
+                step=100.0,
+                key="ike_limit",
+                help="Domyślnie limit 2025. Zmienia się co rok — sprawdź aktualną wartość.",
+            )
+        with lim2:
+            ikze_limit_std = st.number_input(
+                "Limit IKZE (zł/rok)",
+                min_value=0.0,
+                value=float(IKZE_LIMIT_2025),
+                step=100.0,
+                key="ikze_limit",
+                help="Limit standardowy 2025. Dla działalności — przełącz poniżej.",
+            )
+        with lim3:
+            use_biz_limit = st.checkbox(
+                "IKZE — działalność (1,5×)",
+                value=False,
+                key="ikze_biz",
+                help=f"Limit dla prowadzących działalność: {IKZE_LIMIT_BIZ_2025:,.0f} zł (2025).",
+            )
+        ikze_limit = float(IKZE_LIMIT_BIZ_2025) if use_biz_limit else float(ikze_limit_std)
+        if use_biz_limit:
+            st.caption(f"Stosowany limit IKZE (działalność): **{ikze_limit:,.0f} zł**.")
+
+        i1, i2, i3, i4 = st.columns(4)
+        with i1:
+            ike_contrib = st.number_input(
+                "Roczna wpłata (zł)",
+                min_value=0.0,
+                value=min(10_000.0, float(IKE_LIMIT_2025)),
+                step=500.0,
+                key="ike_contrib",
+            )
+        with i2:
+            ike_years = st.number_input(
+                "Lata do emerytury",
+                min_value=1,
+                max_value=50,
+                value=25,
+                step=1,
+                key="ike_years",
+            )
+        with i3:
+            ike_return = st.number_input(
+                "Roczny zwrot (%)",
+                min_value=-10.0,
+                max_value=30.0,
+                value=7.0,
+                step=0.5,
+                key="ike_return",
+            )
+        with i4:
+            pit_label = st.selectbox(
+                "Stawka PIT (IKZE)",
+                options=list(PIT_RATES.keys()),
+                index=0,
+                key="ike_pit",
+            )
+        pit_rate = PIT_RATES[pit_label]
+
+        cmp = compare_accounts(
+            annual_contribution=float(ike_contrib),
+            years=int(ike_years),
+            annual_return_pct=float(ike_return),
+            pit_rate=pit_rate,
+            ike_limit=float(ike_limit),
+            ikze_limit=ikze_limit,
+        )
+        pln = "PLN"
+
+        if cmp.ike.capped or cmp.ikze.capped:
+            bits = []
+            if cmp.ike.capped:
+                bits.append(f"IKE → {cmp.ike.annual_contribution:,.0f} zł")
+            if cmp.ikze.capped:
+                bits.append(f"IKZE → {cmp.ikze.annual_contribution:,.0f} zł")
+            st.info(
+                "Wpłata przekracza limit — na koncie emerytalnym liczymy uciętą kwotę: "
+                + ", ".join(bits)
+                + ". Zwykłe konto przyjmuje pełną wpłatę."
+            )
+
+        m1, m2, m3 = st.columns(3)
+        with m1:
+            st.metric(
+                "Zwykłe — netto",
+                format_currency(cmp.taxable.net_value, pln),
+                help=(
+                    f"Wpłacono {format_currency(cmp.taxable.total_contributed, pln)}, "
+                    f"Belka {format_currency(cmp.taxable.exit_tax, pln)}."
+                ),
+            )
+        with m2:
+            st.metric(
+                "IKE — netto",
+                format_currency(cmp.ike.net_value, pln),
+                delta=f"+{format_currency(cmp.ike.tax_saved_vs_taxable, pln)} vs Belka",
+                help=(
+                    "Bez Belki przy wypłacie po 60. r.ż. Delta = oszczędność vs ta sama "
+                    "wpłata na zwykłym."
+                ),
+            )
+        with m3:
+            st.metric(
+                "IKZE — netto",
+                format_currency(cmp.ikze.net_value, pln),
+                delta=f"+{format_currency(cmp.ikze.tax_saved_vs_taxable, pln)} vs Belka",
+                help=(
+                    f"Ryczałt 10% = {format_currency(cmp.ikze.exit_tax, pln)}; "
+                    f"zwroty PIT reinwestowane netto = "
+                    f"{format_currency(cmp.ikze.side_pocket_net, pln)}."
+                ),
+            )
+
+        if cmp.ikze.immediate_refund_annual > 0:
+            st.caption(
+                f"Natychmiastowy zwrot PIT z IKZE: "
+                f"**{format_currency(cmp.ikze.immediate_refund_annual, pln)}/rok** "
+                f"({pit_label}) — w modelu reinwestowany na zwykłym koncie."
+            )
+
+        best = max(
+            (cmp.taxable.net_value, "Zwykłe"),
+            (cmp.ike.net_value, "IKE"),
+            (cmp.ikze.net_value, "IKZE"),
+            key=lambda x: x[0],
+        )
+        if best[0] > 0:
+            st.success(
+                f"Na tym horyzoncie najwyższa wartość netto: **{best[1]}** "
+                f"({format_currency(best[0], pln)})."
+            )
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.plotly_chart(
+                build_ike_ikze_comparison_chart(cmp.trajectory, pln),
+                use_container_width=True,
+            )
+        with c2:
+            st.plotly_chart(
+                build_ike_ikze_bars_chart(
+                    cmp.taxable.net_value,
+                    cmp.ike.net_value,
+                    cmp.ikze.net_value,
+                    pln,
+                ),
+                use_container_width=True,
+            )
+
+        st.caption(
+            "⚠️ Limity IKE/IKZE zmieniają się co rok — wartości domyślne to **2025**. "
+            "Model zakłada wypłatę całości na końcu horyzontu przy spełnieniu warunków "
+            "wiekowych. To szacunek edukacyjny, nie porada podatkowa."
+        )
 
 # --- Dywidendy ---
 with tab_dividends:

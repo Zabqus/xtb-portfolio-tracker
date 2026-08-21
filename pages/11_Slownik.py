@@ -187,6 +187,12 @@ TERMS: list[tuple[str, str, str]] = [
     ("Waluty i podatki", "Podatek Belki (19%)",
      "Polski podatek 19% od zrealizowanych zysków kapitałowych i dywidend. Aplikacja podaje "
      "szacunek per rok podatkowy – orientacyjnie, nie jako porada podatkowa."),
+    ("Waluty i podatki", "IKE",
+     "Indywidualne Konto Emerytalne – limity wpłat rocznych; przy wypłacie po 60. r.ż. "
+     "(i spełnieniu warunków) zyski bez Belki 19%. Kalkulator w Historia → Podatek Belki."),
+    ("Waluty i podatki", "IKZE",
+     "Indywidualne Konto Zabezpieczenia Emerytalnego – wpłata odliczana od podstawy PIT "
+     "(zwrot = wpłata × stawka 12%/32%/19%); przy wypłacie po 65. r.ż. ryczałt 10% od całości."),
     ("Waluty i podatki", "Multi-account",
      "Połączenie dwóch eksportów XTB (np. konto PLN + EUR) w jeden widok całego majątku."),
     ("Waluty i podatki", "Tax-loss harvesting",
