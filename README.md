@@ -21,7 +21,8 @@ xtb_portfolio_tracker/
 │   ├── 7_Alerty.py              # Progi ROI ±X% i alerty cenowe
 │   ├── 8_Konsensusy_Sygnaly.py  # Ratingi analityków + sygnały kup/trzymaj/sprzedaj
 │   ├── 9_Zwroty.py              # MWR/TWR, benchmarki, scenariusze, snapshoty
-│   └── 10_Slownik.py            # Słownik pojęć (działa bez importu)
+│   ├── 10_Cele.py               # Cele wartości portfela + FIRE / dividend snowball
+│   └── 11_Slownik.py            # Słownik pojęć (działa bez importu)
 ├── core/                        # Logika biznesowa i dane rynkowe
 │   ├── importer.py / importer_maps.py
 │   ├── analyzer.py, session.py, multi_account.py
@@ -35,7 +36,7 @@ xtb_portfolio_tracker/
 │   ├── signals.py, signal_snapshots.py, range_52w.py
 │   ├── dividends.py, dividend_calendar.py, tax_harvest.py
 │   ├── allocation.py, rebalance.py, alerts.py, watchlist.py
-│   ├── snapshots.py, preferences.py
+│   ├── snapshots.py, preferences.py, goals.py
 │   ├── technicals.py, timing_score.py, cost_basis.py
 │   ├── timeline.py, transactions.py, closed_analysis.py
 │   ├── pdf_report.py, excel_export.py
@@ -47,7 +48,7 @@ xtb_portfolio_tracker/
 │   ├── history_charts.py, analytics_charts.py, technical_charts.py
 │   ├── returns_charts.py, risk_charts.py, pnl_charts.py, fx_charts.py
 │   ├── allocation_charts.py, watchlist_charts.py
-│   ├── consensus_charts.py, analyst_consensus.py
+│   ├── consensus_charts.py, analyst_consensus.py, goals_charts.py
 │   └── …
 ├── scripts/
 │   └── ci_smoke.py              # Smoke test importów (CI)
@@ -131,6 +132,7 @@ Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → przeglą
 - **Atrybucja i rolling returns** – wkład pozycji/sektorów, heatmapa rolling
 - **Scenariusze** – stress test top pozycji + Monte Carlo (bootstrap)
 - **Snapshoty portfela** – lokalny timeline wartości (`snapshots.json`), też dla importu CSV
+- **Cele i FIRE** – strona *Cele*: projekcja czasu do celu wartości (procent składany + dopłaty), liczba FIRE (reguła 4%), pokrycie wydatków dywidendami i wykres „dividend snowball"
 
 ### Eksport (Portfolio)
 

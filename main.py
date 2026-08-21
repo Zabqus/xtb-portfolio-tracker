@@ -43,6 +43,7 @@ if report is None:
         - **Alerty** – pozycje powyżej progu ±X% ROI (w aplikacji, bez powiadomień systemowych)
         - **Konsensusy i sygnały** – cele analityków oraz sygnały kup / trzymaj / sprzedaj
         - **Zwroty** – prawdziwa stopa zwrotu (MWR/XIRR + TWR), portfel vs benchmark, snapshoty
+        - **Cele i FIRE** – cel wartości portfela, niezależność finansowa, dividend snowball
         - **Słownik** – krótkie wyjaśnienia wszystkich pojęć używanych w aplikacji
 
         ### Wskazówki
@@ -92,5 +93,5 @@ else:
 st.divider()
 st.caption(
     "Przejdź do **Portfolio**, **Pozycja**, **Historia**, **Analiza**, **Watchlist**, "
-    "**Alokacja**, **Zwroty** lub **Słownik** w menu po lewej."
+    "**Alokacja**, **Zwroty**, **Cele** lub **Słownik** w menu po lewej."
 )

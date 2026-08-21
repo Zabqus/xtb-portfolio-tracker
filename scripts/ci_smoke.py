@@ -56,6 +56,7 @@ def main() -> int:
         "core.performance_analytics",
         "core.position_risk",
         "core.preferences",
+        "core.goals",
         "ui.charts",
         "ui.formatters",
         "ui.tables",
@@ -74,12 +75,22 @@ def main() -> int:
         "ui.risk_charts",
         "ui.pnl_charts",
         "ui.fx_charts",
+        "ui.goals_charts",
     ]
 
     for name in modules:
         __import__(name)
 
-    print(f"OK: {len(modules)} modules imported")
+    # Kompilacja stron (nie importujemy ich — wykonują kod Streamlit na module level).
+    # Wychwytuje błędy składni w pages/*.py, których zwykły import modułów nie wykryje.
+    import py_compile
+
+    page_files = sorted((REPO_ROOT / "pages").glob("*.py"))
+    page_files.append(REPO_ROOT / "main.py")
+    for path in page_files:
+        py_compile.compile(str(path), doraise=True)
+
+    print(f"OK: {len(modules)} modules imported, {len(page_files)} pages compiled")
     return 0
 
 

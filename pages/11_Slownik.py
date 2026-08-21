@@ -218,6 +218,26 @@ TERMS: list[tuple[str, str, str]] = [
      "Zapisany lokalnie (snapshots.json) stan portfela w danym dniu: wartość, koszt, "
      "PnL i pozycje. Buduje własny timeline wartości niezależny od Cash Operations."),
 
+    # Cele i FIRE
+    ("Cele i FIRE", "FIRE",
+     "Financial Independence, Retire Early – stan, w którym majątek lub dywidendy "
+     "pokrywają Twoje roczne wydatki, więc praca staje się opcjonalna."),
+    ("Cele i FIRE", "Liczba FIRE",
+     "Majątek potrzebny do niezależności = roczne wydatki × 25 (przy regule 4%). "
+     "Ogólnie: roczne wydatki / bezpieczna stopa wypłaty."),
+    ("Cele i FIRE", "Reguła 4% (SWR)",
+     "Safe Withdrawal Rate – zakłada, że można rokrocznie wypłacać ~4% początkowego "
+     "portfela (rosnące o inflację) bez jego wyczerpania przez ~30 lat."),
+    ("Cele i FIRE", "Procent składany",
+     "Zysk nalicza się także od wcześniejszych zysków. Motor wzrostu majątku w długim "
+     "terminie – dlatego czas w rynku jest tak ważny."),
+    ("Cele i FIRE", "Dividend snowball",
+     "Efekt kuli śniegowej: reinwestowane i rosnące dywidendy z czasem generują coraz "
+     "większy dochód pasywny, aż pokryją wydatki."),
+    ("Cele i FIRE", "Yield on cost",
+     "Roczna dywidenda podzielona przez Twój koszt zakupu (nie bieżącą cenę). Rośnie, "
+     "gdy spółka podnosi dywidendę – pokazuje realny zwrot dochodowy z inwestycji."),
+
     # Sygnały
     ("Sygnały", "Sygnał kup / trzymaj / sprzedaj",
      "Syntetyczna ocena (skala 0–10) łącząca trzy źródła: analizę techniczną (40%), "
