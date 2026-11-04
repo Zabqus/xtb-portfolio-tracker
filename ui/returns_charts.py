@@ -472,6 +472,49 @@ def build_calendar_returns_heatmap(calendar_df: pd.DataFrame) -> go.Figure:
     return style_figure(fig, heatmap=True)
 
 
+def build_growth_projection_chart(
+    schedule: pd.DataFrame,
+    currency: str,
+    *,
+    annual_return_pct: float,
+) -> go.Figure:
+    """Wykres projekcji kapitalizacji: wartość vs wniesiony kapitał rok po roku."""
+    fig = go.Figure()
+    if schedule is None or schedule.empty:
+        fig.update_layout(title="Brak danych do projekcji wzrostu")
+        return style_figure(fig)
+
+    fig.add_trace(
+        go.Scatter(
+            x=schedule["year"],
+            y=schedule["value"],
+            mode="lines+markers",
+            name="Wartość portfela",
+            line=dict(color=ACCENT, width=2.5),
+            hovertemplate="Rok %{x}<br>Wartość: %{y:,.0f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=schedule["year"],
+            y=schedule["invested"],
+            mode="lines+markers",
+            name="Wniesiony kapitał",
+            line=dict(dash="dot", width=2),
+            hovertemplate="Rok %{x}<br>Zainwestowano: %{y:,.0f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title=f"Projekcja wzrostu ({annual_return_pct:+.1f}% rocznie, kapitalizacja)",
+        height=380,
+        hovermode="x unified",
+        margin=dict(t=56),
+        xaxis_title="Lata",
+        yaxis_title=f"Wartość ({currency})",
+    )
+    return style_figure(fig)
+
+
 def build_monte_carlo_fan_chart(mc_paths: pd.DataFrame, horizon_years: float) -> go.Figure:
     """Fan chart Monte Carlo — percentyle 10/50/90."""
     fig = go.Figure()

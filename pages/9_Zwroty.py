@@ -18,6 +18,7 @@ from core.performance_analytics import (
     MULTI_BENCHMARK_NAMES,
     build_portfolio_vs_multi_benchmark,
     compute_calendar_returns,
+    compute_growth_projection,
     compute_return_attribution,
     compute_rolling_returns_heatmap,
     compute_whatif_scenario,
@@ -41,6 +42,7 @@ from ui.formatters import format_currency, pnl_delta_color
 from ui.returns_charts import (
     build_benchmark_risk_chart,
     build_calendar_returns_heatmap,
+    build_growth_projection_chart,
     build_monte_carlo_fan_chart,
     build_multi_benchmark_chart,
     build_portfolio_vs_benchmark_chart,
@@ -421,7 +423,10 @@ with tab_attribution:
 # ───────────────────────── Scenariusze ─────────────────────────
 with tab_scenarios:
     st.subheader("Scenariusze „co jeśli”")
-    st.caption("Prosty stress test i symulacja Monte Carlo na historycznych zwrotach TWR.")
+    st.caption(
+        "Stress test (spadek/wzrost), projekcja kapitalizacji na przyszłe lata "
+        "oraz Monte Carlo na historycznych zwrotach TWR."
+    )
 
     analyzed = get_analyzed_open()
     twr = None
@@ -430,7 +435,7 @@ with tab_scenarios:
             timeline = get_portfolio_timeline()
             twr = compute_twr(timeline, report.cash_operations, target_currency=display_currency)
 
-    st.markdown("#### Stress test — spadek top pozycji")
+    st.markdown("#### Stress test — zmiana ceny top pozycji")
     if analyzed is None or analyzed.empty:
         st.info("Brak otwartych pozycji do symulacji.")
     else:
@@ -439,12 +444,13 @@ with tab_scenarios:
             top_n = st.slider("Top N pozycji", min_value=1, max_value=10, value=3, key="whatif_top_n")
         with s2:
             shock_pct = st.slider(
-                "Spadek cen (%)",
+                "Zmiana cen (%)",
                 min_value=-50,
-                max_value=0,
+                max_value=50,
                 value=-10,
                 step=1,
                 key="whatif_shock",
+                help="Ujemne = spadek (stress), dodatnie = wzrost top pozycji.",
             )
 
         whatif = compute_whatif_scenario(
@@ -497,6 +503,121 @@ with tab_scenarios:
                     use_container_width=True,
                     hide_index=True,
                 )
+
+    st.divider()
+    st.markdown("#### Projekcja wzrostu — kapitalizacja zwrotów")
+    st.caption(
+        "Ile może być wart portfel za N lat przy założonym rocznym zwrocie "
+        "(reinwestowanie / procent składany). Domyślna stopa = TWR roczny, jeśli dostępny."
+    )
+
+    portfolio_value = 0.0
+    if analyzed is not None and not analyzed.empty and "market_value" in analyzed.columns:
+        portfolio_value = float(analyzed["market_value"].fillna(0).sum())
+
+    default_ann_return = 7.0
+    if twr is not None and twr.has_data and twr.twr_annualized_pct is not None:
+        default_ann_return = round(float(twr.twr_annualized_pct), 1)
+        # ekstremalne historyczne TWR nie powinny dominować slidera
+        default_ann_return = max(-20.0, min(30.0, default_ann_return))
+
+    if portfolio_value <= 0:
+        st.info("Brak wartości portfela do projekcji.")
+    else:
+        g1, g2, g3 = st.columns(3)
+        with g1:
+            growth_return = st.number_input(
+                "Roczny zwrot (%)",
+                min_value=-20.0,
+                max_value=40.0,
+                value=float(default_ann_return),
+                step=0.5,
+                key="growth_ann_return",
+                help="Zakładana stała stopa roczna przy reinwestowaniu zwrotów.",
+            )
+        with g2:
+            growth_years = st.selectbox(
+                "Horyzont (lata)",
+                [1, 3, 5, 10, 15, 20, 30],
+                index=3,
+                key="growth_years",
+            )
+        with g3:
+            growth_monthly = st.number_input(
+                f"Dopłata miesięczna ({display_currency})",
+                min_value=0.0,
+                max_value=1_000_000.0,
+                value=0.0,
+                step=100.0,
+                key="growth_monthly",
+            )
+
+        growth = compute_growth_projection(
+            portfolio_value,
+            annual_return_pct=float(growth_return),
+            years=int(growth_years),
+            monthly_contribution=float(growth_monthly),
+        )
+
+        if growth.has_data:
+            k1, k2, k3, k4 = st.columns(4)
+            with k1:
+                st.metric(
+                    "Wartość dziś",
+                    format_currency(growth.current_value, display_currency),
+                )
+            with k2:
+                st.metric(
+                    f"Za {growth.years} lat",
+                    format_currency(growth.final_value, display_currency),
+                    delta=f"{(growth.final_value / growth.current_value - 1) * 100:+.1f}%"
+                    if growth.current_value > 0
+                    else None,
+                    delta_color=pnl_delta_color(growth.total_gain),
+                )
+            with k3:
+                st.metric(
+                    "Wniesiony kapitał",
+                    format_currency(growth.total_invested, display_currency),
+                )
+            with k4:
+                st.metric(
+                    "Zysk z kapitalizacji",
+                    format_currency(growth.total_gain, display_currency),
+                    delta_color=pnl_delta_color(growth.total_gain),
+                )
+
+            st.plotly_chart(
+                build_growth_projection_chart(
+                    growth.schedule,
+                    display_currency,
+                    annual_return_pct=growth.annual_return_pct,
+                ),
+                use_container_width=True,
+            )
+
+            show = growth.schedule.copy()
+            show["value"] = show["value"].round(0)
+            show["invested"] = show["invested"].round(0)
+            show["gain"] = show["gain"].round(0)
+            show["gain_pct"] = show["gain_pct"].round(1)
+            st.dataframe(
+                show.rename(
+                    columns={
+                        "year": "Rok",
+                        "value": f"Wartość ({display_currency})",
+                        "invested": f"Wniesione ({display_currency})",
+                        "gain": f"Zysk ({display_currency})",
+                        "gain_pct": "Zysk %",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.caption(
+                "Kapitalizacja miesięczna przy stałej stopie rocznej. "
+                "To uproszczenie — bez podatków, inflacji i zmienności rynku."
+            )
 
     st.divider()
     st.markdown("#### Monte Carlo (bootstrap historycznych zwrotów)")

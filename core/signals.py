@@ -90,6 +90,21 @@ def _normalize(raw: float, raw_max: float, target_max: float) -> float:
     return max(0.0, min(target_max, raw / raw_max * target_max))
 
 
+def _finite_float(value) -> float | None:
+    """None / NaN / pd.NA → None; inaczej float."""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def technical_score(snapshot: dict) -> tuple[float, str, str, float | None]:
     """
     Zwraca (score 0–4, opis MA200, opis RSI, wartość RSI).
@@ -100,10 +115,10 @@ def technical_score(snapshot: dict) -> tuple[float, str, str, float | None]:
     if not snapshot:
         return 2.0, "—", "—", None
 
-    close = snapshot.get("close")
-    ma50 = snapshot.get("ma50")
-    ma200 = snapshot.get("ma200")
-    rsi = snapshot.get("rsi")
+    close = _finite_float(snapshot.get("close"))
+    ma50 = _finite_float(snapshot.get("ma50"))
+    ma200 = _finite_float(snapshot.get("ma200"))
+    rsi = _finite_float(snapshot.get("rsi"))
 
     raw = 0.0
 
@@ -159,12 +174,13 @@ def consensus_score(
     }
     raw = base_map.get(k, 2.0)  # brak danych → neutralnie
 
-    if upside_pct is not None:
-        if upside_pct > 20:
+    upside_f = _finite_float(upside_pct)
+    if upside_f is not None:
+        if upside_f > 20:
             raw += 1.0
-        elif upside_pct > 10:
+        elif upside_f > 10:
             raw += 0.5
-        elif upside_pct < 0:
+        elif upside_f < 0:
             raw -= 1.0
 
     rating = format_recommendation(consensus.recommendation_key if consensus else None)
@@ -217,20 +233,23 @@ def _build_comment(
 ) -> str:
     parts: list[str] = []
     parts.append("powyżej MA200" if "▲" in trend else ("poniżej MA200" if "▼" in trend else "trend MA200 nieznany"))
-    if rsi is not None:
-        if rsi < 30:
-            parts.append(f"RSI {rsi:.0f} (wyprzedanie)")
-        elif rsi > 70:
-            parts.append(f"RSI {rsi:.0f} (wykupienie)")
+    rsi_f = _finite_float(rsi)
+    if rsi_f is not None:
+        if rsi_f < 30:
+            parts.append(f"RSI {rsi_f:.0f} (wyprzedanie)")
+        elif rsi_f > 70:
+            parts.append(f"RSI {rsi_f:.0f} (wykupienie)")
         else:
-            parts.append(f"RSI {rsi:.0f}")
+            parts.append(f"RSI {rsi_f:.0f}")
     if rating and rating != "—":
-        if upside_pct is not None:
-            parts.append(f"konsensus {rating.lower()} ({upside_pct:+.0f}% do celu)")
+        upside_f = _finite_float(upside_pct)
+        if upside_f is not None:
+            parts.append(f"konsensus {rating.lower()} ({upside_f:+.0f}% do celu)")
         else:
             parts.append(f"konsensus {rating.lower()}")
-    if roi_pct is not None and not pd.isna(roi_pct):
-        parts.append(f"Twój P&L {roi_pct:+.0f}%")
+    roi_f = _finite_float(roi_pct)
+    if roi_f is not None:
+        parts.append(f"Twój P&L {roi_f:+.0f}%")
     return f"{signal}: " + ", ".join(parts) + "."
 
 
@@ -576,14 +595,16 @@ def build_action_ranking(
     for col in ("weight_pct", "delta_7d", "score_total"):
         if col not in df.columns:
             df[col] = 0.0
+        else:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
     if "signal" not in df.columns:
         df["signal"] = SIGNAL_HOLD
     if "interval_agreement" not in df.columns:
         df["interval_agreement"] = "Brak danych"
 
     df["urgency"] = (
-        df["delta_7d"].abs().fillna(0) * 1.8
-        + df["weight_pct"].fillna(0) * 0.12
+        df["delta_7d"].abs() * 1.8
+        + df["weight_pct"] * 0.12
         + (df["signal"] == SIGNAL_SELL).astype(float) * 3.0
         + (df["interval_agreement"] == "Mieszany").astype(float) * 2.0
     )

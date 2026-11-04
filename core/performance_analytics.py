@@ -44,6 +44,21 @@ class MonteCarloResult:
     has_data: bool = True
 
 
+@dataclass
+class GrowthProjectionResult:
+    """Projekcja kapitalizacji: wartość rok po roku przy stałym zwrocie rocznym."""
+
+    current_value: float
+    annual_return_pct: float
+    monthly_contribution: float
+    years: int
+    schedule: pd.DataFrame  # year, value, invested, gain, gain_pct
+    final_value: float
+    total_invested: float
+    total_gain: float
+    has_data: bool = True
+
+
 # ───────────────────────── position values ─────────────────────────
 
 def build_position_value_matrix(cash_ops: pd.DataFrame) -> pd.DataFrame:
@@ -297,6 +312,74 @@ def build_portfolio_vs_multi_benchmark(
     return merged.reset_index(drop=True)
 
 
+# ───────────────────────── growth projection (compound) ─────────────────────────
+
+def compute_growth_projection(
+    current_value: float,
+    *,
+    annual_return_pct: float = 7.0,
+    years: int = 10,
+    monthly_contribution: float = 0.0,
+) -> GrowthProjectionResult:
+    """
+    Projekcja wartości przy stałym zwrocie rocznym (kapitalizacja miesięczna)
+    + opcjonalnych dopłatach. Zakłada reinwestowanie zwrotów.
+    """
+    empty = GrowthProjectionResult(
+        0.0, float(annual_return_pct), 0.0, 0, pd.DataFrame(), 0.0, 0.0, 0.0, has_data=False
+    )
+    start = max(0.0, float(current_value))
+    if start <= 0 and float(monthly_contribution) <= 0:
+        return empty
+
+    years = max(1, int(years))
+    contribution = max(0.0, float(monthly_contribution))
+    monthly_rate = (1.0 + float(annual_return_pct) / 100.0) ** (1.0 / 12.0) - 1.0
+
+    value = start
+    invested = start
+    rows: list[dict] = [
+        {
+            "year": 0,
+            "value": value,
+            "invested": invested,
+            "gain": 0.0,
+            "gain_pct": 0.0,
+        }
+    ]
+
+    for year in range(1, years + 1):
+        for _ in range(12):
+            value = value * (1.0 + monthly_rate) + contribution
+            invested += contribution
+        gain = value - invested
+        gain_pct = (gain / invested * 100.0) if invested > 0 else 0.0
+        rows.append(
+            {
+                "year": year,
+                "value": float(value),
+                "invested": float(invested),
+                "gain": float(gain),
+                "gain_pct": float(gain_pct),
+            }
+        )
+
+    schedule = pd.DataFrame(rows)
+    final_value = float(value)
+    total_invested = float(invested)
+    return GrowthProjectionResult(
+        current_value=start,
+        annual_return_pct=float(annual_return_pct),
+        monthly_contribution=contribution,
+        years=years,
+        schedule=schedule,
+        final_value=final_value,
+        total_invested=total_invested,
+        total_gain=final_value - total_invested,
+        has_data=True,
+    )
+
+
 # ───────────────────────── what-if stress test ─────────────────────────
 
 def compute_whatif_scenario(
@@ -307,7 +390,8 @@ def compute_whatif_scenario(
     twr_index: pd.DataFrame | None = None,
 ) -> WhatIfResult:
     """
-    Stress test: spadek top-N pozycji o shock_pct % → nowa wartość i drawdown.
+    Stress test: zmiana ceny top-N pozycji o shock_pct % (spadek lub wzrost)
+    → nowa wartość i drawdown.
     """
     empty = WhatIfResult(0, 0, 0, 0, 0, [], has_data=False)
     if analyzed is None or analyzed.empty or "market_value" not in analyzed.columns:
