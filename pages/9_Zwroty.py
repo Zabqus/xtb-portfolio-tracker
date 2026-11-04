@@ -53,13 +53,12 @@ from ui.returns_charts import (
     build_twr_with_drawdown_chart,
 )
 from ui.sidebar import render_import_sidebar
-from ui.theme import bootstrap_page
+from ui.theme import bootstrap_page, page_header, section_header
 
 bootstrap_page()
-st.title("📈 Zwroty i wartość w czasie")
-st.caption(
-    "Prawdziwa stopa zwrotu portfela (ważona czasem i przepływami), porównanie "
-    "z indeksem oraz własne snapshoty wartości."
+page_header(
+    "Zwroty",
+    "MWR/TWR, benchmarki, atrybucja, snapshoty i scenariusze",
 )
 
 if not render_import_sidebar():
@@ -72,19 +71,22 @@ if report is None:
 
 display_currency = get_display_currency()
 
-tab_returns, tab_benchmark, tab_attribution, tab_snapshots, tab_scenarios = st.tabs(
+tab_returns, tab_benchmark, tab_attribution, tab_scenarios, tab_snapshots = st.tabs(
     [
-        "📊 Stopa zwrotu (MWR / TWR)",
-        "🏁 Portfel vs benchmark",
-        "🎯 Atrybucja i rolling",
-        "📌 Snapshoty",
-        "🔮 Scenariusze",
+        "MWR / TWR",
+        "vs Benchmark",
+        "Atrybucja",
+        "Scenariusze",
+        "Snapshoty",
     ]
 )
 
 # ───────────────────────── MWR / TWR ─────────────────────────
 with tab_returns:
-    st.subheader("Prawdziwa stopa zwrotu")
+    section_header(
+        "Prawdziwa stopa zwrotu",
+        "MWR uwzględnia timing wpłat · TWR porównuje jakość pozycji z rynkiem",
+    )
 
     if report.cash_operations is None:
         st.warning(
@@ -188,28 +190,23 @@ with tab_returns:
 
             st.plotly_chart(build_twr_index_chart(twr.index), use_container_width=True)
 
-            st.markdown("##### Krzywa TWR + drawdown (underwater)")
-            st.plotly_chart(build_twr_with_drawdown_chart(twr.index), use_container_width=True)
-            st.caption(
-                "Dolny panel pokazuje spadek od szczytu (%) — jak w funduszach: "
-                "equity curve + underwater chart."
-            )
-
-            st.markdown("##### Kalendarz dziennych zwrotów")
-            calendar_df = compute_calendar_returns(twr.index)
-            if calendar_df.empty:
-                st.caption("Za mało danych do kalendarza zwrotów.")
-            else:
+            with st.expander("TWR + drawdown i kalendarz zwrotów", expanded=False):
                 st.plotly_chart(
-                    build_calendar_returns_heatmap(calendar_df),
-                    use_container_width=True,
+                    build_twr_with_drawdown_chart(twr.index), use_container_width=True
                 )
-                st.caption(
-                    "Kolor = dzienny zwrot TWR (zielony zysk, czerwony spadek). "
-                    "Intuicyjny podgląd jak GitHub contributions — dobry do PDF."
-                )
+                st.caption("Dolny panel: spadek od szczytu (%) — equity + underwater.")
 
-        with st.expander("ℹ️ MWR vs TWR — czym się różnią?"):
+                calendar_df = compute_calendar_returns(twr.index)
+                if calendar_df.empty:
+                    st.caption("Za mało danych do kalendarza zwrotów.")
+                else:
+                    st.plotly_chart(
+                        build_calendar_returns_heatmap(calendar_df),
+                        use_container_width=True,
+                    )
+                    st.caption("Kolor = dzienny zwrot TWR (zielony zysk, czerwony spadek).")
+
+        with st.expander("MWR vs TWR — czym się różnią?", expanded=False):
             st.markdown(
                 """
                 - **MWR (XIRR)** odpowiada na pytanie *„ile zarobiłem na włożonym kapitale?”*
@@ -226,10 +223,9 @@ with tab_returns:
 
 # ───────────────────────── Portfel vs benchmark ─────────────────────────
 with tab_benchmark:
-    st.subheader("Portfel (TWR) vs benchmark rynkowy")
-    st.caption(
-        "Porównujemy **indeks TWR** portfela (bez wpływu dopłat) z indeksem rynkowym — "
-        "to jedyne uczciwe zestawienie portfela z dopłatami i benchmarku."
+    section_header(
+        "Portfel (TWR) vs benchmark",
+        "Indeks TWR bez wpływu dopłat — uczciwe porównanie z rynkiem",
     )
 
     if report.cash_operations is None:
@@ -290,64 +286,59 @@ with tab_benchmark:
                     risk_summary = summarize_benchmark_risk(risk_series)
 
                 if risk_summary.has_data:
-                    st.markdown("##### Beta i tracking error (rolling 1Y)")
-                    r1, r2, r3 = st.columns(3)
-                    with r1:
-                        st.metric(
-                            "Beta (ostatnia)",
-                            f"{risk_summary.beta:.2f}" if risk_summary.beta is not None else "—",
-                            help="Wrażliwość portfela na ruchy benchmarku.",
+                    with st.expander("Beta i tracking error (rolling 1Y)", expanded=False):
+                        r1, r2, r3 = st.columns(3)
+                        with r1:
+                            st.metric(
+                                "Beta (ostatnia)",
+                                f"{risk_summary.beta:.2f}" if risk_summary.beta is not None else "—",
+                                help="Wrażliwość portfela na ruchy benchmarku.",
+                            )
+                        with r2:
+                            st.metric(
+                                "Tracking error",
+                                f"{risk_summary.tracking_error_pct:.1f}%"
+                                if risk_summary.tracking_error_pct is not None
+                                else "—",
+                                help="Roczne odchylenie dziennych zwrotów portfela od benchmarku.",
+                            )
+                        with r3:
+                            st.metric(
+                                "Information ratio",
+                                f"{risk_summary.information_ratio:.2f}"
+                                if risk_summary.information_ratio is not None
+                                else "—",
+                                help="Nadwyżka zwrotu / tracking error.",
+                            )
+                        st.plotly_chart(
+                            build_benchmark_risk_chart(risk_series, benchmark_name),
+                            use_container_width=True,
                         )
-                    with r2:
-                        st.metric(
-                            "Tracking error",
-                            f"{risk_summary.tracking_error_pct:.1f}%"
-                            if risk_summary.tracking_error_pct is not None
-                            else "—",
-                            help="Roczne odchylenie dziennych zwrotów portfela od benchmarku.",
-                        )
-                    with r3:
-                        st.metric(
-                            "Information ratio",
-                            f"{risk_summary.information_ratio:.2f}"
-                            if risk_summary.information_ratio is not None
-                            else "—",
-                            help="Nadwyżka zwrotu / tracking error.",
-                        )
-                    st.plotly_chart(
-                        build_benchmark_risk_chart(risk_series, benchmark_name),
-                        use_container_width=True,
-                    )
                 else:
                     st.caption(
                         "Beta i tracking error wymagają co najmniej ~1 roku wspólnych danych "
                         "portfela i benchmarku."
                     )
 
-            st.divider()
-            st.markdown("##### Porównanie wielu benchmarków naraz")
-            st.caption(
-                "Jedna linia portfela + cienkie linie indeksów — SPY/S&P 500, QQQ/NASDAQ, "
-                "MSCI World, WIG20."
-            )
-            with st.spinner("Pobieranie wielu benchmarków…"):
-                multi = build_portfolio_vs_multi_benchmark(
-                    twr.index, list(MULTI_BENCHMARK_NAMES)
-                )
-            if multi.empty:
-                st.info("Brak danych do wykresu multi-benchmark.")
-            else:
-                st.plotly_chart(
-                    build_multi_benchmark_chart(multi, list(MULTI_BENCHMARK_NAMES)),
-                    use_container_width=True,
-                )
+            with st.expander("Porównanie wielu benchmarków", expanded=False):
+                st.caption("Portfel + SPY/S&P 500, QQQ/NASDAQ, MSCI World, WIG20.")
+                with st.spinner("Pobieranie wielu benchmarków…"):
+                    multi = build_portfolio_vs_multi_benchmark(
+                        twr.index, list(MULTI_BENCHMARK_NAMES)
+                    )
+                if multi.empty:
+                    st.info("Brak danych do wykresu multi-benchmark.")
+                else:
+                    st.plotly_chart(
+                        build_multi_benchmark_chart(multi, list(MULTI_BENCHMARK_NAMES)),
+                        use_container_width=True,
+                    )
 
 # ───────────────────────── Atrybucja i rolling ─────────────────────────
 with tab_attribution:
-    st.subheader("Atrybucja zwrotu i rolling returns")
-    st.caption(
-        "Ile poszczególne pozycje / sektory / regiony wniosły do TWR w wybranym okresie "
-        "oraz heatmapa rolling returns."
+    section_header(
+        "Atrybucja zwrotu",
+        "Wkład pozycji / sektorów / regionów do TWR oraz rolling returns",
     )
 
     if report.cash_operations is None:
@@ -405,27 +396,25 @@ with tab_attribution:
                     "Pokazuje, które obszary portfela napędzały lub hamowały TWR."
                 )
 
-            st.divider()
-            st.markdown("##### Rolling returns — heatmapa")
-            heatmap_df = compute_rolling_returns_heatmap(twr.index, freq=freq)
-            if heatmap_df.empty:
-                st.info("Za mało danych do heatmapy rolling returns.")
-            else:
-                st.plotly_chart(
-                    build_rolling_returns_heatmap(heatmap_df),
-                    use_container_width=True,
-                )
-                st.caption(
-                    "Szybka odpowiedź: czy ostatnie 3 miesiące odstają od długiego trendu? "
-                    "Porównaj wiersze (okresy) z kolumną 3M vs 1Y."
-                )
+            with st.expander("Rolling returns — heatmapa", expanded=False):
+                heatmap_df = compute_rolling_returns_heatmap(twr.index, freq=freq)
+                if heatmap_df.empty:
+                    st.info("Za mało danych do heatmapy rolling returns.")
+                else:
+                    st.plotly_chart(
+                        build_rolling_returns_heatmap(heatmap_df),
+                        use_container_width=True,
+                    )
+                    st.caption(
+                        "Czy ostatnie 3 miesiące odstają od długiego trendu? "
+                        "Porównaj wiersze z kolumną 3M vs 1Y."
+                    )
 
 # ───────────────────────── Scenariusze ─────────────────────────
 with tab_scenarios:
-    st.subheader("Scenariusze „co jeśli”")
-    st.caption(
-        "Stress test (spadek/wzrost), projekcja kapitalizacji na przyszłe lata "
-        "oraz Monte Carlo na historycznych zwrotach TWR."
+    section_header(
+        "Scenariusze „co jeśli”",
+        "Stress test, projekcja wzrostu i Monte Carlo",
     )
 
     analyzed = get_analyzed_open()
@@ -435,7 +424,7 @@ with tab_scenarios:
             timeline = get_portfolio_timeline()
             twr = compute_twr(timeline, report.cash_operations, target_currency=display_currency)
 
-    st.markdown("#### Stress test — zmiana ceny top pozycji")
+    st.markdown("**Stress test — zmiana ceny top pozycji**")
     if analyzed is None or analyzed.empty:
         st.info("Brak otwartych pozycji do symulacji.")
     else:
@@ -504,179 +493,172 @@ with tab_scenarios:
                     hide_index=True,
                 )
 
-    st.divider()
-    st.markdown("#### Projekcja wzrostu — kapitalizacja zwrotów")
-    st.caption(
-        "Ile może być wart portfel za N lat przy założonym rocznym zwrocie "
-        "(reinwestowanie / procent składany). Domyślna stopa = TWR roczny, jeśli dostępny."
-    )
-
-    portfolio_value = 0.0
-    if analyzed is not None and not analyzed.empty and "market_value" in analyzed.columns:
-        portfolio_value = float(analyzed["market_value"].fillna(0).sum())
-
-    default_ann_return = 7.0
-    if twr is not None and twr.has_data and twr.twr_annualized_pct is not None:
-        default_ann_return = round(float(twr.twr_annualized_pct), 1)
-        # ekstremalne historyczne TWR nie powinny dominować slidera
-        default_ann_return = max(-20.0, min(30.0, default_ann_return))
-
-    if portfolio_value <= 0:
-        st.info("Brak wartości portfela do projekcji.")
-    else:
-        g1, g2, g3 = st.columns(3)
-        with g1:
-            growth_return = st.number_input(
-                "Roczny zwrot (%)",
-                min_value=-20.0,
-                max_value=40.0,
-                value=float(default_ann_return),
-                step=0.5,
-                key="growth_ann_return",
-                help="Zakładana stała stopa roczna przy reinwestowaniu zwrotów.",
-            )
-        with g2:
-            growth_years = st.selectbox(
-                "Horyzont (lata)",
-                [1, 3, 5, 10, 15, 20, 30],
-                index=3,
-                key="growth_years",
-            )
-        with g3:
-            growth_monthly = st.number_input(
-                f"Dopłata miesięczna ({display_currency})",
-                min_value=0.0,
-                max_value=1_000_000.0,
-                value=0.0,
-                step=100.0,
-                key="growth_monthly",
-            )
-
-        growth = compute_growth_projection(
-            portfolio_value,
-            annual_return_pct=float(growth_return),
-            years=int(growth_years),
-            monthly_contribution=float(growth_monthly),
+    with st.expander("Projekcja wzrostu — kapitalizacja", expanded=False):
+        st.caption(
+            "Ile może być wart portfel za N lat przy założonym rocznym zwrocie. "
+            "Domyślna stopa = TWR roczny, jeśli dostępny."
         )
 
-        if growth.has_data:
-            k1, k2, k3, k4 = st.columns(4)
-            with k1:
-                st.metric(
-                    "Wartość dziś",
-                    format_currency(growth.current_value, display_currency),
-                )
-            with k2:
-                st.metric(
-                    f"Za {growth.years} lat",
-                    format_currency(growth.final_value, display_currency),
-                    delta=f"{(growth.final_value / growth.current_value - 1) * 100:+.1f}%"
-                    if growth.current_value > 0
-                    else None,
-                    delta_color=pnl_delta_color(growth.total_gain),
-                )
-            with k3:
-                st.metric(
-                    "Wniesiony kapitał",
-                    format_currency(growth.total_invested, display_currency),
-                )
-            with k4:
-                st.metric(
-                    "Zysk z kapitalizacji",
-                    format_currency(growth.total_gain, display_currency),
-                    delta_color=pnl_delta_color(growth.total_gain),
-                )
+        portfolio_value = 0.0
+        if analyzed is not None and not analyzed.empty and "market_value" in analyzed.columns:
+            portfolio_value = float(analyzed["market_value"].fillna(0).sum())
 
-            st.plotly_chart(
-                build_growth_projection_chart(
-                    growth.schedule,
-                    display_currency,
-                    annual_return_pct=growth.annual_return_pct,
-                ),
-                use_container_width=True,
-            )
+        default_ann_return = 7.0
+        if twr is not None and twr.has_data and twr.twr_annualized_pct is not None:
+            default_ann_return = round(float(twr.twr_annualized_pct), 1)
+            default_ann_return = max(-20.0, min(30.0, default_ann_return))
 
-            show = growth.schedule.copy()
-            show["value"] = show["value"].round(0)
-            show["invested"] = show["invested"].round(0)
-            show["gain"] = show["gain"].round(0)
-            show["gain_pct"] = show["gain_pct"].round(1)
-            st.dataframe(
-                show.rename(
-                    columns={
-                        "year": "Rok",
-                        "value": f"Wartość ({display_currency})",
-                        "invested": f"Wniesione ({display_currency})",
-                        "gain": f"Zysk ({display_currency})",
-                        "gain_pct": "Zysk %",
-                    }
-                ),
-                use_container_width=True,
-                hide_index=True,
-            )
-            st.caption(
-                "Kapitalizacja miesięczna przy stałej stopie rocznej. "
-                "To uproszczenie — bez podatków, inflacji i zmienności rynku."
-            )
-
-    st.divider()
-    st.markdown("#### Monte Carlo (bootstrap historycznych zwrotów)")
-
-    if twr is None or not twr.has_data or twr.index.empty:
-        st.info("Monte Carlo wymaga timeline z Cash Operations (min. ~30 dni TWR).")
-    else:
-        mc1, mc2 = st.columns(2)
-        with mc1:
-            horizon_years = st.selectbox(
-                "Horyzont",
-                [1, 3, 5],
-                format_func=lambda x: f"{x} {'rok' if x == 1 else 'lata'}",
-                index=1,
-                key="mc_horizon",
-            )
-        with mc2:
-            n_sims = st.selectbox("Symulacje", [200, 500, 1000], index=1, key="mc_sims")
-
-        with st.spinner("Symulacja Monte Carlo…"):
-            mc = run_monte_carlo(
-                twr.index,
-                horizon_years=float(horizon_years),
-                n_simulations=n_sims,
-            )
-
-        if not mc.has_data:
-            st.info("Za mało historycznych zwrotów do symulacji (min. ~30 dni).")
+        if portfolio_value <= 0:
+            st.info("Brak wartości portfela do projekcji.")
         else:
-            st.plotly_chart(
-                build_monte_carlo_fan_chart(mc.paths, float(horizon_years)),
-                use_container_width=True,
+            g1, g2, g3 = st.columns(3)
+            with g1:
+                growth_return = st.number_input(
+                    "Roczny zwrot (%)",
+                    min_value=-20.0,
+                    max_value=40.0,
+                    value=float(default_ann_return),
+                    step=0.5,
+                    key="growth_ann_return",
+                    help="Zakładana stała stopa roczna przy reinwestowaniu zwrotów.",
+                )
+            with g2:
+                growth_years = st.selectbox(
+                    "Horyzont (lata)",
+                    [1, 3, 5, 10, 15, 20, 30],
+                    index=3,
+                    key="growth_years",
+                )
+            with g3:
+                growth_monthly = st.number_input(
+                    f"Dopłata miesięczna ({display_currency})",
+                    min_value=0.0,
+                    max_value=1_000_000.0,
+                    value=0.0,
+                    step=100.0,
+                    key="growth_monthly",
+                )
+
+            growth = compute_growth_projection(
+                portfolio_value,
+                annual_return_pct=float(growth_return),
+                years=int(growth_years),
+                monthly_contribution=float(growth_monthly),
             )
-            last = mc.paths.iloc[-1]
-            m1, m2, m3 = st.columns(3)
-            with m1:
-                st.metric("P10 (pesymistyczny)", f"{last['p10']:.0f}")
-            with m2:
-                st.metric("Mediana P50", f"{last['p50']:.0f}")
-            with m3:
-                st.metric("P90 (optymistyczny)", f"{last['p90']:.0f}")
-            st.caption(
-                f"Rozkład wartości portfela za {horizon_years} lat "
-                f"({mc.n_simulations} symulacji, bootstrap dziennych zwrotów TWR). "
-                "Indeks start = 100. To uproszczenie — bez pełnej macierzy korelacji pozycji."
-            )
+
+            if growth.has_data:
+                k1, k2, k3, k4 = st.columns(4)
+                with k1:
+                    st.metric(
+                        "Wartość dziś",
+                        format_currency(growth.current_value, display_currency),
+                    )
+                with k2:
+                    st.metric(
+                        f"Za {growth.years} lat",
+                        format_currency(growth.final_value, display_currency),
+                        delta=f"{(growth.final_value / growth.current_value - 1) * 100:+.1f}%"
+                        if growth.current_value > 0
+                        else None,
+                        delta_color=pnl_delta_color(growth.total_gain),
+                    )
+                with k3:
+                    st.metric(
+                        "Wniesiony kapitał",
+                        format_currency(growth.total_invested, display_currency),
+                    )
+                with k4:
+                    st.metric(
+                        "Zysk z kapitalizacji",
+                        format_currency(growth.total_gain, display_currency),
+                        delta_color=pnl_delta_color(growth.total_gain),
+                    )
+
+                st.plotly_chart(
+                    build_growth_projection_chart(
+                        growth.schedule,
+                        display_currency,
+                        annual_return_pct=growth.annual_return_pct,
+                    ),
+                    use_container_width=True,
+                )
+
+                show = growth.schedule.copy()
+                show["value"] = show["value"].round(0)
+                show["invested"] = show["invested"].round(0)
+                show["gain"] = show["gain"].round(0)
+                show["gain_pct"] = show["gain_pct"].round(1)
+                st.dataframe(
+                    show.rename(
+                        columns={
+                            "year": "Rok",
+                            "value": f"Wartość ({display_currency})",
+                            "invested": f"Wniesione ({display_currency})",
+                            "gain": f"Zysk ({display_currency})",
+                            "gain_pct": "Zysk %",
+                        }
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                st.caption(
+                    "Kapitalizacja miesięczna przy stałej stopie — bez podatków, inflacji i zmienności."
+                )
+
+    with st.expander("Monte Carlo (bootstrap zwrotów TWR)", expanded=False):
+        if twr is None or not twr.has_data or twr.index.empty:
+            st.info("Monte Carlo wymaga timeline z Cash Operations (min. ~30 dni TWR).")
+        else:
+            mc1, mc2 = st.columns(2)
+            with mc1:
+                horizon_years = st.selectbox(
+                    "Horyzont",
+                    [1, 3, 5],
+                    format_func=lambda x: f"{x} {'rok' if x == 1 else 'lata'}",
+                    index=1,
+                    key="mc_horizon",
+                )
+            with mc2:
+                n_sims = st.selectbox("Symulacje", [200, 500, 1000], index=1, key="mc_sims")
+
+            with st.spinner("Symulacja Monte Carlo…"):
+                mc = run_monte_carlo(
+                    twr.index,
+                    horizon_years=float(horizon_years),
+                    n_simulations=n_sims,
+                )
+
+            if not mc.has_data:
+                st.info("Za mało historycznych zwrotów do symulacji (min. ~30 dni).")
+            else:
+                st.plotly_chart(
+                    build_monte_carlo_fan_chart(mc.paths, float(horizon_years)),
+                    use_container_width=True,
+                )
+                last = mc.paths.iloc[-1]
+                m1, m2, m3 = st.columns(3)
+                with m1:
+                    st.metric("P10 (pesymistyczny)", f"{last['p10']:.0f}")
+                with m2:
+                    st.metric("Mediana P50", f"{last['p50']:.0f}")
+                with m3:
+                    st.metric("P90 (optymistyczny)", f"{last['p90']:.0f}")
+                st.caption(
+                    f"Rozkład za {horizon_years} lat ({mc.n_simulations} symulacji). "
+                    "Indeks start = 100 — uproszczenie bez pełnej macierzy korelacji."
+                )
 
 # ───────────────────────── Snapshoty ─────────────────────────
 with tab_snapshots:
-    st.subheader("Snapshoty portfela")
-    st.caption(
-        "Zapisuj bieżący stan portfela do lokalnego pliku `snapshots.json`. "
-        "Buduje własny timeline wartości — działa też dla importu CSV (bez Cash Operations)."
+    section_header(
+        "Snapshoty portfela",
+        "Lokalny timeline wartości w `snapshots.json` — działa też bez Cash Operations",
     )
 
     analyzed = get_analyzed_open()
     col_save, col_info = st.columns([1, 2])
     with col_save:
-        if st.button("📌 Zapisz snapshot na dziś", type="primary", key="save_snapshot_btn"):
+        if st.button("Zapisz snapshot na dziś", type="primary", key="save_snapshot_btn"):
             if analyzed is None or analyzed.empty:
                 st.error("Brak przeanalizowanego portfela do zapisania.")
             else:
@@ -753,9 +735,9 @@ with tab_snapshots:
                 hide_index=True,
             )
 
-        with st.expander("⚙️ Zarządzaj snapshotami"):
+        with st.expander("Zarządzaj snapshotami", expanded=False):
             st.caption(f"Łącznie zapisów (wszystkie waluty): {len(load_snapshots())}")
-            if st.button("🗑️ Usuń wszystkie snapshoty", key="clear_snapshots_btn"):
+            if st.button("Usuń wszystkie snapshoty", key="clear_snapshots_btn"):
                 clear_snapshots()
                 st.success("Usunięto wszystkie snapshoty.")
                 st.rerun()

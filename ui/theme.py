@@ -540,6 +540,13 @@ def glossary_term_html(term: str, definition: str) -> str:
         """
 
 
+def page_header(title: str, subtitle: str | None = None) -> None:
+    """Spójny nagłówek strony: tytuł + krótki podtytuł."""
+    st.title(title)
+    if subtitle:
+        st.caption(subtitle)
+
+
 def section_header(title: str, subtitle: str | None = None) -> None:
     """Spójny nagłówek sekcji z akcentem i opcjonalnym podtytułem."""
     accent = accent_color()

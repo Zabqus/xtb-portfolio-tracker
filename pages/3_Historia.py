@@ -84,10 +84,13 @@ from ui.returns_charts import build_portfolio_value_drawdown_chart
 from ui.sidebar import render_import_sidebar
 from ui.tables import render_closed_positions_table, render_round_trips_table
 from ui.tax_charts import build_ike_ikze_bars_chart, build_ike_ikze_comparison_chart
-from ui.theme import bootstrap_page, metric_card_style
+from ui.theme import bootstrap_page, metric_card_style, page_header, section_header
 
 bootstrap_page()
-st.title("📜 Historia i zamknięte pozycje")
+page_header(
+    "Historia",
+    "Timeline, trade analytics, zamknięte pozycje, podatek i kalendarz",
+)
 
 if not render_import_sidebar():
     st.info("Wgraj plik XTB w panelu bocznym.")
@@ -104,26 +107,23 @@ closed = report.closed_positions
     tab_timeline,
     tab_analytics,
     tab_closed,
-    tab_trades,
     tab_tax,
     tab_calendar,
 ) = st.tabs(
     [
-        "Timeline portfela",
+        "Timeline",
         "Trade Analytics",
-        "Zamknięte pozycje",
-        "Historia transakcji",
-        "💰 Podatek Belki",
-        "📅 Kalendarz",
+        "Zamknięte",
+        "Podatek Belki",
+        "Kalendarz",
     ]
 )
 
 # --- Timeline ---
 with tab_timeline:
-    st.subheader("Wartość portfela w czasie")
-    st.caption(
-        "Rekonstrukcja z arkusza **Cash Operations**: dzienne saldo pozycji "
-        "wycenione kursem zamknięcia Yahoo (auto_adjust)."
+    section_header(
+        "Wartość portfela w czasie",
+        "Rekonstrukcja z Cash Operations: dzienne saldo wycenione kursem Yahoo",
     )
 
     if report.cash_operations is None:
@@ -162,30 +162,29 @@ with tab_timeline:
                 use_container_width=True,
             )
 
-            st.markdown("#### Wartość portfela + drawdown")
-            st.plotly_chart(
-                build_portfolio_value_drawdown_chart(timeline, currency),
-                use_container_width=True,
-            )
-            st.caption(
-                "Górny panel: wartość rynkowa. Dolny: underwater chart — spadek od szczytu (%)."
-            )
+            with st.expander("Wartość + drawdown", expanded=False):
+                st.plotly_chart(
+                    build_portfolio_value_drawdown_chart(timeline, currency),
+                    use_container_width=True,
+                )
+                st.caption(
+                    "Górny panel: wartość rynkowa. Dolny: underwater — spadek od szczytu (%)."
+                )
 
-            st.markdown("#### Wpłaty vs wartość rynkowa")
-            st.plotly_chart(
-                build_contributions_vs_value_chart(
-                    timeline, report.cash_operations, currency
-                ),
-                use_container_width=True,
-            )
-            st.caption(
-                "Zielony obszar powyżej niebieskiej linii = Twój zysk rynkowy. "
-                "Obszar poniżej = strata względem wpłaconych środków."
-            )
+            with st.expander("Wpłaty vs wartość rynkowa", expanded=False):
+                st.plotly_chart(
+                    build_contributions_vs_value_chart(
+                        timeline, report.cash_operations, currency
+                    ),
+                    use_container_width=True,
+                )
+                st.caption(
+                    "Powyżej linii wpłat = zysk rynkowy; poniżej = strata względem wniesionych środków."
+                )
 
 # --- Trade Analytics ---
 with tab_analytics:
-    st.subheader("Statystyki tradingowe")
+    section_header("Statystyki tradingowe", "Round-tripy FIFO z Cash Operations")
 
     if report.cash_operations is None:
         st.warning("Wymagany natywny eksport Excel z arkuszem Cash Operations.")
@@ -297,230 +296,215 @@ with tab_analytics:
                 trades = parse_cash_operations_trades(report.cash_operations)
                 trades_filtered = filter_trades_for_analytics(trades, rt)
 
-                st.markdown("### Krzywa equity tradera")
-                st.caption(
-                    "Skumulowany zrealizowany P&L z round-tripów FIFO + markery "
-                    "każdej transakcji kupna/sprzedaży na osi czasu."
-                )
+                st.caption("Krzywa equity — skumulowany zrealizowany PnL + markery transakcji")
                 st.plotly_chart(
                     build_trader_equity_curve(rt, trades_filtered, currency),
                     use_container_width=True,
                 )
 
-                st.markdown("### MAE / MFE — ekscurcje w trakcie trzymania")
-                st.caption(
-                    "MAE (Maximum Adverse Excursion) — jak głęboko poszła strata "
-                    "niezrealizowana. MFE (Maximum Favorable Excursion) — jak wysoki "
-                    "był niezrealizowany zysk, zanim zamknąłeś pozycję."
-                )
-                with st.spinner("Pobieranie cen historycznych (Yahoo)…"):
-                    trips_exc = compute_mae_mfe(rt)
-                st.plotly_chart(build_mae_mfe_chart(trips_exc), use_container_width=True)
+                with st.expander("MAE / MFE i efficiency exitu", expanded=False):
+                    st.caption(
+                        "MAE — najgłębsza strata niezrealizowana; MFE — najwyższy niezrealizowany zysk. "
+                        "Efficiency: realizacja względem MFE (zyski) lub MAE (straty)."
+                    )
+                    with st.spinner("Pobieranie cen historycznych (Yahoo)…"):
+                        trips_exc = compute_mae_mfe(rt)
+                    st.plotly_chart(build_mae_mfe_chart(trips_exc), use_container_width=True)
+                    trips_eff = add_trade_efficiency_metrics(trips_exc)
+                    st.plotly_chart(build_efficiency_chart(trips_eff), use_container_width=True)
 
-                trips_eff = add_trade_efficiency_metrics(trips_exc)
-                st.markdown("### MAE/MFE + efficiency score exitu")
-                st.caption(
-                    "Efficiency: dla zyskownych trade'ów realizacja względem MFE, "
-                    "dla stratnych relacja straty do MAE. + risk-adjusted %/day."
-                )
-                st.plotly_chart(build_efficiency_chart(trips_eff), use_container_width=True)
-
-                st.markdown("### Czas trzymania vs wynik")
-                st.plotly_chart(
-                    build_holding_vs_outcome_chart(rt),
-                    use_container_width=True,
-                )
-
-                rolling = compute_rolling_metrics(rt, windows=(30, 50))
-                st.markdown("### Rolling win rate / rolling profit factor")
-                st.plotly_chart(
-                    build_rolling_metrics_chart(rolling),
-                    use_container_width=True,
-                )
-
-                daily_heat, weekly_heat = compute_trade_heatmap(rt)
-                st.markdown("### Dzienny / tygodniowy heatmap P&L")
-                h1, h2 = st.columns(2)
-                with h1:
+                with st.expander("Forma tradera — rolling, heatmapy, serie", expanded=False):
                     st.plotly_chart(
-                        build_trade_heatmap_chart(
-                            daily_heat,
-                            "Heatmap P&L: dzień tygodnia × godzina",
-                            "Godzina",
-                            "Dzień",
-                        ),
+                        build_holding_vs_outcome_chart(rt),
                         use_container_width=True,
                     )
-                with h2:
+                    rolling = compute_rolling_metrics(rt, windows=(30, 50))
                     st.plotly_chart(
-                        build_trade_heatmap_chart(
-                            weekly_heat,
-                            "Heatmap P&L: rok × tydzień ISO",
-                            "Tydzień",
-                            "Rok",
-                        ),
+                        build_rolling_metrics_chart(rolling),
                         use_container_width=True,
                     )
 
-                streak_stats = compute_streak_stats(rt)
-                st.markdown("### Sekwencja wygranych / przegranych")
-                s1, s2, s3, s4 = st.columns(4)
-                with s1:
-                    st.metric("Max seria wygranych", streak_stats["max_win_streak"])
-                with s2:
-                    st.metric("Max seria przegranych", streak_stats["max_loss_streak"])
-                with s3:
-                    st.metric("Bieżąca seria", streak_stats["current_streak"])
-                with s4:
-                    label = "wygranych" if streak_stats["current_streak_type"] == "win" else "przegranych"
-                    st.metric("Typ serii", label)
-                st.plotly_chart(
-                    build_streak_chart(rt, streak_stats["streak_events"]),
-                    use_container_width=True,
-                )
-
-                trips_exit = classify_exit_strategy(rt)
-                st.markdown("### Porównanie strategii wyjścia")
-                st.caption(
-                    "Heurystyczna klasyfikacja: zysk >20%, stop-loss (≤-5%), "
-                    "time-based (≥90 dni bez powyższych), inne."
-                )
-                st.plotly_chart(build_exit_strategy_chart(trips_exit), use_container_width=True)
-
-                st.markdown("### Tagi przyczyny wejścia/wyjścia (manualne)")
-                st.caption(
-                    "Edytuj tagi ręcznie — zapis lokalny w `trade_tags.json` "
-                    "(utrzymuje się po restarcie aplikacji)."
-                )
-                tagged = apply_trade_tags(rt)
-                editable = tagged[
-                    [
-                        "trip_id",
-                        "ticker_xtb",
-                        "open_time",
-                        "close_time",
-                        "realized_pnl",
-                        "entry_tag",
-                        "exit_tag",
-                    ]
-                ].copy()
-                editable = editable.rename(
-                    columns={
-                        "ticker_xtb": "Ticker",
-                        "open_time": "Open",
-                        "close_time": "Close",
-                        "realized_pnl": "PnL",
-                        "entry_tag": "Entry tag",
-                        "exit_tag": "Exit tag",
-                    }
-                )
-                edited = st.data_editor(
-                    editable,
-                    use_container_width=True,
-                    hide_index=True,
-                    key="trade_tags_editor",
-                    num_rows="fixed",
-                    column_config={"trip_id": None},
-                )
-                tagged["entry_tag"] = edited["Entry tag"].astype(str).str.strip().replace("", "other")
-                tagged["exit_tag"] = edited["Exit tag"].astype(str).str.strip().replace("", "other")
-                saved_count = persist_tags_from_dataframe(
-                    tagged,
-                    trip_id_col="trip_id",
-                    entry_col="entry_tag",
-                    exit_col="exit_tag",
-                )
-                if saved_count:
-                    st.caption(f"Zapisano {saved_count} zmian tagów do `trade_tags.json`.")
-                tag_summary = summarize_tags(tagged)
-                tc1, tc2 = st.columns(2)
-                with tc1:
-                    st.plotly_chart(
-                        build_tag_performance_chart(tag_summary, kind="entry"),
-                        use_container_width=True,
-                    )
-                with tc2:
-                    st.plotly_chart(
-                        build_tag_performance_chart(tag_summary, kind="exit"),
-                        use_container_width=True,
-                    )
-
-                st.plotly_chart(
-                    build_round_trip_pnl_chart(rt),
-                    use_container_width=True,
-                )
-
-                st.markdown("### Round-tripy (FIFO z Cash Operations)")
-                st.caption(
-                    f"**{len(rt)} wierszy** po filtrze (łącznie {len(all_round_trips)}). "
-                    "Każdy wiersz to jedno dopasowanie kupno → sprzedaż."
-                )
-                render_round_trips_table(rt)
-
-        st.divider()
-        st.subheader("Cost basis — historia średniej ceny")
-
-        if cost_history is None or cost_history.empty:
-            st.info("Brak historii cost basis.")
-        else:
-            tickers_cb = sorted(cost_history["ticker_xtb"].unique())
-            selected_cb = st.selectbox("Ticker", tickers_cb, key="cost_basis_ticker")
-
-            st.plotly_chart(
-                build_cost_basis_chart(cost_history, selected_cb),
-                use_container_width=True,
-            )
-
-            with st.expander("Szczegóły zdarzeń (cost basis per ticker)"):
-                ticker_events = cost_history[cost_history["ticker_xtb"] == selected_cb].copy()
-                show_cb = ticker_events[
-                    [
-                        "trade_time",
-                        "event",
-                        "trade_qty",
-                        "trade_price",
-                        "quantity_after",
-                        "avg_price_after",
-                        "cost_basis_after",
-                    ]
-                ].rename(
-                    columns={
-                        "trade_time": "Czas",
-                        "event": "Zdarzenie",
-                        "trade_qty": "Ilość transakcji",
-                        "trade_price": "Cena transakcji",
-                        "quantity_after": "Ilość po",
-                        "avg_price_after": "Śr. cena po",
-                        "cost_basis_after": "Cost basis po",
-                    }
-                )
-                for col in show_cb.columns:
-                    if show_cb[col].dtype in ("float64", "float32"):
-                        show_cb[col] = show_cb[col].map(
-                            lambda x: round(x, 4) if pd.notna(x) else None
+                    daily_heat, weekly_heat = compute_trade_heatmap(rt)
+                    h1, h2 = st.columns(2)
+                    with h1:
+                        st.plotly_chart(
+                            build_trade_heatmap_chart(
+                                daily_heat,
+                                "Heatmap P&L: dzień tygodnia × godzina",
+                                "Godzina",
+                                "Dzień",
+                            ),
+                            use_container_width=True,
                         )
-                st.dataframe(show_cb, use_container_width=True, hide_index=True)
+                    with h2:
+                        st.plotly_chart(
+                            build_trade_heatmap_chart(
+                                weekly_heat,
+                                "Heatmap P&L: rok × tydzień ISO",
+                                "Tydzień",
+                                "Rok",
+                            ),
+                            use_container_width=True,
+                        )
 
-            current = get_current_cost_basis(cost_history)
-            if not current.empty:
-                st.markdown("**Aktualny cost basis (otwarte pozycje)**")
-                cur = current.rename(
-                    columns={
-                        "ticker_xtb": "Ticker",
-                        "quantity": "Ilość",
-                        "avg_price": "Śr. cena",
-                        "cost_basis": "Cost basis",
-                        "last_trade_time": "Ostatnia transakcja",
-                    }
+                    streak_stats = compute_streak_stats(rt)
+                    s1, s2, s3, s4 = st.columns(4)
+                    with s1:
+                        st.metric("Max seria wygranych", streak_stats["max_win_streak"])
+                    with s2:
+                        st.metric("Max seria przegranych", streak_stats["max_loss_streak"])
+                    with s3:
+                        st.metric("Bieżąca seria", streak_stats["current_streak"])
+                    with s4:
+                        label = (
+                            "wygranych"
+                            if streak_stats["current_streak_type"] == "win"
+                            else "przegranych"
+                        )
+                        st.metric("Typ serii", label)
+                    st.plotly_chart(
+                        build_streak_chart(rt, streak_stats["streak_events"]),
+                        use_container_width=True,
+                    )
+
+                with st.expander("Strategie wyjścia i tagi", expanded=False):
+                    trips_exit = classify_exit_strategy(rt)
+                    st.caption(
+                        "Heurystyka: zysk >20%, stop-loss (≤-5%), time-based (≥90 dni), inne."
+                    )
+                    st.plotly_chart(
+                        build_exit_strategy_chart(trips_exit), use_container_width=True
+                    )
+
+                    st.caption("Tagi ręczne — zapis lokalny w `trade_tags.json`.")
+                    tagged = apply_trade_tags(rt)
+                    editable = tagged[
+                        [
+                            "trip_id",
+                            "ticker_xtb",
+                            "open_time",
+                            "close_time",
+                            "realized_pnl",
+                            "entry_tag",
+                            "exit_tag",
+                        ]
+                    ].copy()
+                    editable = editable.rename(
+                        columns={
+                            "ticker_xtb": "Ticker",
+                            "open_time": "Open",
+                            "close_time": "Close",
+                            "realized_pnl": "PnL",
+                            "entry_tag": "Entry tag",
+                            "exit_tag": "Exit tag",
+                        }
+                    )
+                    edited = st.data_editor(
+                        editable,
+                        use_container_width=True,
+                        hide_index=True,
+                        key="trade_tags_editor",
+                        num_rows="fixed",
+                        column_config={"trip_id": None},
+                    )
+                    tagged["entry_tag"] = (
+                        edited["Entry tag"].astype(str).str.strip().replace("", "other")
+                    )
+                    tagged["exit_tag"] = (
+                        edited["Exit tag"].astype(str).str.strip().replace("", "other")
+                    )
+                    saved_count = persist_tags_from_dataframe(
+                        tagged,
+                        trip_id_col="trip_id",
+                        entry_col="entry_tag",
+                        exit_col="exit_tag",
+                    )
+                    if saved_count:
+                        st.caption(f"Zapisano {saved_count} zmian tagów do `trade_tags.json`.")
+                    tag_summary = summarize_tags(tagged)
+                    tc1, tc2 = st.columns(2)
+                    with tc1:
+                        st.plotly_chart(
+                            build_tag_performance_chart(tag_summary, kind="entry"),
+                            use_container_width=True,
+                        )
+                    with tc2:
+                        st.plotly_chart(
+                            build_tag_performance_chart(tag_summary, kind="exit"),
+                            use_container_width=True,
+                        )
+
+                with st.expander("Lista round-tripów (FIFO)", expanded=False):
+                    st.plotly_chart(
+                        build_round_trip_pnl_chart(rt),
+                        use_container_width=True,
+                    )
+                    st.caption(
+                        f"**{len(rt)} wierszy** po filtrze (łącznie {len(all_round_trips)})."
+                    )
+                    render_round_trips_table(rt)
+
+        with st.expander("Cost basis — historia średniej ceny", expanded=False):
+            if cost_history is None or cost_history.empty:
+                st.info("Brak historii cost basis.")
+            else:
+                tickers_cb = sorted(cost_history["ticker_xtb"].unique())
+                selected_cb = st.selectbox("Ticker", tickers_cb, key="cost_basis_ticker")
+
+                st.plotly_chart(
+                    build_cost_basis_chart(cost_history, selected_cb),
+                    use_container_width=True,
                 )
-                st.dataframe(cur, use_container_width=True, hide_index=True)
 
-# --- Zamknięte pozycje ---
+                with st.expander("Szczegóły zdarzeń (cost basis per ticker)"):
+                    ticker_events = cost_history[cost_history["ticker_xtb"] == selected_cb].copy()
+                    show_cb = ticker_events[
+                        [
+                            "trade_time",
+                            "event",
+                            "trade_qty",
+                            "trade_price",
+                            "quantity_after",
+                            "avg_price_after",
+                            "cost_basis_after",
+                        ]
+                    ].rename(
+                        columns={
+                            "trade_time": "Czas",
+                            "event": "Zdarzenie",
+                            "trade_qty": "Ilość transakcji",
+                            "trade_price": "Cena transakcji",
+                            "quantity_after": "Ilość po",
+                            "avg_price_after": "Śr. cena po",
+                            "cost_basis_after": "Cost basis po",
+                        }
+                    )
+                    for col in show_cb.columns:
+                        if show_cb[col].dtype in ("float64", "float32"):
+                            show_cb[col] = show_cb[col].map(
+                                lambda x: round(x, 4) if pd.notna(x) else None
+                            )
+                    st.dataframe(show_cb, use_container_width=True, hide_index=True)
+
+                current = get_current_cost_basis(cost_history)
+                if not current.empty:
+                    st.markdown("**Aktualny cost basis (otwarte pozycje)**")
+                    cur = current.rename(
+                        columns={
+                            "ticker_xtb": "Ticker",
+                            "quantity": "Ilość",
+                            "avg_price": "Śr. cena",
+                            "cost_basis": "Cost basis",
+                            "last_trade_time": "Ostatnia transakcja",
+                        }
+                    )
+                    st.dataframe(cur, use_container_width=True, hide_index=True)
+
+# --- Zamknięte pozycje (+ historia transakcji) ---
 with tab_closed:
-    st.subheader("Zrealizowane zyski i straty")
-    st.caption(
-        "Dane z arkusza **Closed Positions** w eksporcie XTB (widok brokera). "
-        "Do analizy FIFO z historii transakcji użyj zakładki **Trade Analytics**."
+    section_header(
+        "Zrealizowane zyski i straty",
+        "Closed Positions z XTB · do analizy FIFO użyj zakładki Trade Analytics",
     )
 
     if closed is None or closed.empty:
@@ -615,53 +599,49 @@ with tab_closed:
                     if not worst.empty:
                         st.dataframe(_trade_display(worst), use_container_width=True, hide_index=True)
 
-            st.subheader("Wszystkie zamknięte pozycje (XTB)")
-            render_closed_positions_table(closed_filtered.drop(columns=["close_year"]))
+            with st.expander("Wszystkie zamknięte pozycje (XTB)", expanded=False):
+                render_closed_positions_table(closed_filtered.drop(columns=["close_year"]))
 
-# --- Historia transakcji ---
-with tab_trades:
-    st.subheader("Historia transakcji (Cash Operations)")
-
-    if report.cash_operations is None:
-        st.warning("Wymagany natywny eksport Excel z arkuszem Cash Operations.")
-    else:
-        trades = parse_cash_operations_trades(report.cash_operations)
-        if trades.empty:
-            st.info("Brak transakcji giełdowych w wybranym okresie.")
+    with st.expander("Historia transakcji (Cash Operations)", expanded=False):
+        if report.cash_operations is None:
+            st.warning("Wymagany natywny eksport Excel z arkuszem Cash Operations.")
         else:
-            st.caption(f"Łącznie **{len(trades)}** operacji OPEN/CLOSE BUY")
+            trades = parse_cash_operations_trades(report.cash_operations)
+            if trades.empty:
+                st.info("Brak transakcji giełdowych w wybranym okresie.")
+            else:
+                st.caption(f"Łącznie **{len(trades)}** operacji OPEN/CLOSE BUY")
 
-            display = trades.copy()
-            display = display.rename(
-                columns={
-                    "trade_time": "Czas (UTC)",
-                    "ticker_xtb": "Ticker XTB",
-                    "ticker_yahoo": "Ticker Yahoo",
-                    "side": "Strona",
-                    "quantity": "Ilość",
-                    "price": "Cena",
-                    "amount": "Kwota (konto)",
-                    "operation_type": "Typ operacji",
-                    "comment": "Komentarz",
-                }
-            )
-            drop_cols = [c for c in display.columns if c in ("trade_date",)]
-            display = display.drop(columns=drop_cols, errors="ignore")
+                display = trades.copy()
+                display = display.rename(
+                    columns={
+                        "trade_time": "Czas (UTC)",
+                        "ticker_xtb": "Ticker XTB",
+                        "ticker_yahoo": "Ticker Yahoo",
+                        "side": "Strona",
+                        "quantity": "Ilość",
+                        "price": "Cena",
+                        "amount": "Kwota (konto)",
+                        "operation_type": "Typ operacji",
+                        "comment": "Komentarz",
+                    }
+                )
+                drop_cols = [c for c in display.columns if c in ("trade_date",)]
+                display = display.drop(columns=drop_cols, errors="ignore")
 
-            for col in ("Ilość", "Cena", "Kwota (konto)"):
-                if col in display.columns:
-                    display[col] = display[col].map(
-                        lambda x: round(x, 4) if pd.notna(x) else None
-                    )
+                for col in ("Ilość", "Cena", "Kwota (konto)"):
+                    if col in display.columns:
+                        display[col] = display[col].map(
+                            lambda x: round(x, 4) if pd.notna(x) else None
+                        )
 
-            st.dataframe(display, use_container_width=True, hide_index=True)
+                st.dataframe(display, use_container_width=True, hide_index=True)
 
 # --- Podatek Belki ---
 with tab_tax:
-    st.subheader("Kalkulator podatku Belki (19%)")
-    st.caption(
-        "Szacunek na podstawie zrealizowanych zysków/strat z arkusza **Closed Positions** "
-        "oraz dywidend z **Cash Operations**."
+    section_header(
+        "Kalkulator podatku Belki (19%)",
+        "Szacunek z Closed Positions oraz dywidend z Cash Operations",
     )
 
     if closed is None or closed.empty or "close_time" not in closed.columns:
@@ -851,7 +831,7 @@ with tab_tax:
 
     # --- IKE / IKZE (nie wymaga Closed Positions) ---
     st.divider()
-    with st.expander("🇵🇱 IKE / IKZE — optymalizacja podatkowa", expanded=False):
+    with st.expander("IKE / IKZE — optymalizacja podatkowa", expanded=False):
         st.markdown(
             "Kalkulator ile realnie zyskujesz, trzymając inwestycje na koncie emerytalnym "
             "zamiast na zwykłym. Przy tej samej rocznej wpłacie i stopie zwrotu porównujemy "
@@ -1028,10 +1008,10 @@ with tab_tax:
 
 # --- Kalendarz (dywidendy + wyniki) ---
 with tab_calendar:
-    tab_div, tab_earn = st.tabs(["💵 Dywidendy", "📊 Wyniki"])
+    tab_div, tab_earn = st.tabs(["Dywidendy", "Wyniki"])
 
     with tab_div:
-        st.subheader("Dywidendy")
+        section_header("Dywidendy", "Historia wypłat, yield i projekcja cashflow")
 
         if report.cash_operations is None:
             st.warning("Wymagany natywny eksport Excel z arkuszem Cash Operations.")
@@ -1249,7 +1229,7 @@ with tab_calendar:
                         )
 
     with tab_earn:
-        st.subheader("Kalendarz wyników (earnings)")
+        section_header("Kalendarz wyników (earnings)")
         st.caption(
             "Nadchodzące daty publikacji wyników kwartalnych dla otwartych pozycji — "
             "dane z Yahoo Finance `Ticker.calendar` (cache 24h)."
