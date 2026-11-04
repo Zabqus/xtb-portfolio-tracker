@@ -1,35 +1,35 @@
 # XTB Portfolio Tracker
 
-Lokalny dashboard (Streamlit) do analizy portfela akcji i ETF-ów z brokera XTB.
-Po wgraniu eksportu Excel dostajesz KPI (TWR, MWR, Sharpe, alerty), PnL, ryzyko,
-alokację, konsensusy analityków, stopy zwrotu i narzędzia podatkowe — wszystko offline
-w przeglądarce, bez konta w chmurze.
+Local Streamlit dashboard for analyzing stock and ETF portfolios from the XTB broker.
+Upload an Excel export to get KPIs (TWR, MWR, Sharpe, alerts), PnL, risk,
+allocation, analyst consensus, returns, and tax tools — all offline
+in the browser, with no cloud account.
 
-## Struktura projektu
+## Project structure
 
 ```
 xtb_portfolio_tracker/
-├── main.py                      # Dashboard KPI (sparklines)
-├── uruchom.bat                  # Skrót Windows (lokalny, w .gitignore)
+├── main.py                      # KPI dashboard (sparklines)
+├── uruchom.bat                  # Windows shortcut (local, in .gitignore)
 ├── pages/
-│   ├── 1_Portfolio.py           # Otwarte pozycje, ryzyko, eksport PDF/Excel
-│   ├── 2_Pozycja.py             # Analiza tickera (wykres, fundamenty, timing)
-│   ├── 3_Historia.py            # Timeline, trade analytics, Belka, kalendarz
-│   ├── 4_Analiza.py             # Analiza techniczna (MA, RSI, MACD, BB)
-│   ├── 5_Watchlist.py           # Tickery spoza portfela
-│   ├── 6_Alokacja.py            # Sektor / region / FX + rebalancing
-│   ├── 7_Alerty.py              # Progi ROI ±X% i alerty cenowe
-│   ├── 8_Konsensusy_Sygnaly.py  # Ratingi analityków + sygnały kup/trzymaj/sprzedaj
-│   ├── 9_Zwroty.py              # MWR/TWR, benchmarki, scenariusze, snapshoty
-│   ├── 10_Cele.py               # Cele wartości portfela + FIRE / dividend snowball
-│   └── 11_Slownik.py            # Słownik pojęć (działa bez importu)
-├── core/                        # Logika biznesowa i dane rynkowe
+│   ├── 1_Portfolio.py           # Open positions, risk, PDF/Excel export
+│   ├── 2_Pozycja.py             # Ticker analysis (chart, fundamentals, timing)
+│   ├── 3_Historia.py            # Timeline, trade analytics, Belka tax, calendar
+│   ├── 4_Analiza.py             # Technical analysis (MA, RSI, MACD, BB)
+│   ├── 5_Watchlist.py           # Tickers outside the portfolio
+│   ├── 6_Alokacja.py            # Sector / region / FX + rebalancing
+│   ├── 7_Alerty.py              # ROI ±X% thresholds and price alerts
+│   ├── 8_Konsensusy_Sygnaly.py  # Analyst ratings + buy/hold/sell signals
+│   ├── 9_Zwroty.py              # MWR/TWR, benchmarks, scenarios, snapshots
+│   ├── 10_Cele.py               # Portfolio value goals + FIRE / dividend snowball
+│   └── 11_Slownik.py            # Glossary (works without an import)
+├── core/                        # Business logic and market data
 │   ├── importer.py / importer_maps.py
 │   ├── analyzer.py, session.py, multi_account.py
 │   ├── market_data.py, history.py, currencies.py, fundamentals.py
 │   ├── returns.py, portfolio_benchmark.py, risk_metrics.py
 │   ├── dashboard_kpis.py, concentration.py, pnl_breakdown.py
-│   ├── fx_decomposition.py      # efekt ceny vs efekt FX
+│   ├── fx_decomposition.py      # price effect vs FX effect
 │   ├── performance_analytics.py, benchmark_risk.py, position_risk.py
 │   ├── trade_analytics.py, trade_excursions.py, trade_tags.py
 │   ├── analyst_consensus.py, consensus_snapshots.py
@@ -42,7 +42,7 @@ xtb_portfolio_tracker/
 │   ├── timeline.py, transactions.py, closed_analysis.py
 │   ├── pdf_report.py, excel_export.py
 │   └── …
-├── ui/                          # Wykresy Plotly, tabele, motyw, sidebar
+├── ui/                          # Plotly charts, tables, theme, sidebar
 │   ├── sidebar.py, theme.py, plotly_theme.py, formatters.py, tables.py
 │   ├── kpi_dashboard.py, sparklines.py, portfolio_filters.py
 │   ├── charts.py, chart_navigation.py, position_charts.py
@@ -50,175 +50,175 @@ xtb_portfolio_tracker/
 │   ├── returns_charts.py, risk_charts.py, pnl_charts.py, fx_charts.py
 │   ├── allocation_charts.py, watchlist_charts.py
 │   ├── consensus_charts.py, analyst_consensus.py, goals_charts.py
-│   ├── tax_charts.py            # IKE / IKZE vs zwykłe
+│   ├── tax_charts.py            # IKE / IKZE vs taxable
 │   └── …
 ├── scripts/
-│   └── ci_smoke.py              # Smoke test importów (CI)
-├── assets/fonts/                # Czcionka PDF (pobierana przy pierwszym raporcie)
-├── .streamlit/config.toml       # Motyw Streamlit
+│   └── ci_smoke.py              # Import smoke test (CI)
+├── assets/fonts/                # PDF font (downloaded on first report)
+├── .streamlit/config.toml       # Streamlit theme
 ├── .github/workflows/ci.yml     # GitHub Actions (Python 3.11 / 3.12)
 └── requirements.txt
 ```
 
-Lokalne pliki użytkownika (w `.gitignore`): `watchlist.json`, `trade_tags.json`,
+Local user files (in `.gitignore`): `watchlist.json`, `trade_tags.json`,
 `user_preferences.json`, `price_alerts.json`, `snapshots.json`,
-oraz opcjonalnie `consensus_snapshots.json` / `signal_snapshots.json`.
+and optionally `consensus_snapshots.json` / `signal_snapshots.json`.
 
-## Uruchomienie
+## Running the app
 
-Przy pierwszym uruchomieniu wykonaj kroki z [Pierwsza instalacja](#pierwsza-instalacja).
+On first run, follow the steps in [First-time setup](#first-time-setup).
 
 ```powershell
-cd ścieżka\do\xtb-portfolio-tracker
+cd path\to\xtb-portfolio-tracker
 .\.venv\Scripts\python -m streamlit run main.py
 ```
 
-Na Windows możesz też użyć lokalnego `uruchom.bat` (nie jest w repozytorium — utwórz go
-sam albo skopiuj z dokumentacji poniżej).
+On Windows you can also use a local `uruchom.bat` (not in the repository — create it
+yourself or copy it from the docs below).
 
-Otwórz **http://localhost:8501** → wgraj eksport XTB w sidebarze → przeglądaj strony.
+Open **http://localhost:8501** → upload the XTB export in the sidebar → browse the pages.
 
-## Funkcje
+## Features
 
-### Start i dane
+### Getting started and data
 
-- **Dashboard KPI** – strona główna ze wallą metryk (TWR, MWR, Sharpe, drawdown, alerty) i sparkline’ami 30/90 dni
-- **Multi-page** – dane w `st.session_state` (plik parsowany raz)
-- **Waluta konta** – auto-wykrywanie PLN/EUR; wyświetlanie w PLN / EUR / USD / GBP (kursy Yahoo, cache 1h)
-- **Multi-account** – dwa eksporty XTB (np. PLN + EUR) → jeden widok majątku
-- **Motyw light/dark** – przełącznik w sidebarze, preferencja w `user_preferences.json`
-- **Słownik** – wyszukiwarka pojęć; działa bez wgranego raportu
+- **KPI dashboard** – home page with a wall of metrics (TWR, MWR, Sharpe, drawdown, alerts) and 30/90-day sparklines
+- **Multi-page** – data in `st.session_state` (file parsed once)
+- **Account currency** – auto-detect PLN/EUR; display in PLN / EUR / USD / GBP (Yahoo FX rates, 1h cache)
+- **Multi-account** – two XTB exports (e.g. PLN + EUR) → one net-worth view
+- **Light/dark theme** – sidebar toggle, preference stored in `user_preferences.json`
+- **Glossary** – concept search; works without an uploaded report
 
-### Portfolio i ryzyko
+### Portfolio and risk
 
-- **Filtry globalne** – sektor, region, konto, zakres ROI (wykresy + tabela)
-- **Wykresy** – pie/bar lub treemap; klik w ticker → strona Pozycja
-- **Wodospad P&L** – niezrealizowany + zrealizowany + dywidendy − szacunek Belki
-- **Dekompozycja FX** – PnL na efekt ceny vs efekt waluty (wodospad + per pozycja); kurs zakupu z analyzera lub Cash Operations
-- **Koncentracja** – HHI, Top-5/Top-10, efektywna liczba pozycji
-- **Mapa ryzyka pozycji** – waga × ROI × zmienność 90d
-- **Metryki ryzyka** – volatility, max DD, Sharpe, Calmar, rolling risk, macierz korelacji (ostrzeżenie ≥ 0.9)
-- **Eksport** – PDF (fpdf2 + kaleido) i Excel (openpyxl) ze strony Portfolio
+- **Global filters** – sector, region, account, ROI range (charts + table)
+- **Charts** – pie/bar or treemap; click a ticker → Position page
+- **P&L waterfall** – unrealized + realized + dividends − estimated Belka tax
+- **FX decomposition** – PnL into price effect vs currency effect (waterfall + per position); purchase FX rate from the analyzer or Cash Operations
+- **Concentration** – HHI, Top-5/Top-10, effective number of positions
+- **Position risk map** – weight × ROI × 90d volatility
+- **Risk metrics** – volatility, max DD, Sharpe, Calmar, rolling risk, correlation matrix (warning ≥ 0.9)
+- **Export** – PDF (fpdf2 + kaleido) and Excel (openpyxl) from the Portfolio page
 
-### Pozycja i technika
+### Position and technicals
 
-- **Wykres ceny** 1Y / 3Y / 5Y, wolumen, vs benchmark (S&P 500 / WIG20)
-- **Fundamenty** – P/E, kapitalizacja, zakres 52W, konsensus analityków
-- **Timing wejścia** – percentyl ceny zakupu (3M)
-- **Analiza techniczna** – MA, RSI, MACD, Bollinger (`pandas-ta` → TA-Lib → pandas)
+- **Price chart** 1Y / 3Y / 5Y, volume, vs benchmark (S&P 500 / WIG20)
+- **Fundamentals** – P/E, market cap, 52W range, analyst consensus
+- **Entry timing** – purchase price percentile (3M)
+- **Technical analysis** – MA, RSI, MACD, Bollinger (`pandas-ta` → TA-Lib → pandas)
 
-### Historia i trading
+### History and trading
 
-- **Timeline** – wartość portfela day-by-day, drawdown, wpłaty vs wartość rynkowa
-- **Trade analytics** – win rate, holding period, equity curve, rolling PF, heatmap P&L
-- **MAE / MFE** – maksymalne odchylenie niekorzystne/korzystne w trakcie trzymania
-- **Tagi round-tripów** – ręczne przyczyny wejścia/wyjścia (`trade_tags.json`)
-- **Cost basis** – historia średniej ceny per ticker
-- **Podatek Belki** – szacunek 19% per rok podatkowy + tax-loss harvesting + porównanie IKE/IKZE vs zwykłe
-- **Kalendarz** – dywidendy (metryki, ex-date, forward yield, cashflow, growth) + wyniki kwartalne (earnings: data, dni do raportu, prognoza EPS, podświetlenie 7/14 dni)
+- **Timeline** – day-by-day portfolio value, drawdown, deposits vs market value
+- **Trade analytics** – win rate, holding period, equity curve, rolling PF, P&L heatmap
+- **MAE / MFE** – maximum adverse/favorable excursion while holding
+- **Round-trip tags** – manual entry/exit reasons (`trade_tags.json`)
+- **Cost basis** – average price history per ticker
+- **Belka tax** – 19% estimate per tax year + tax-loss harvesting + IKE/IKZE vs taxable comparison
+- **Calendar** – dividends (metrics, ex-date, forward yield, cashflow, growth) + quarterly results (earnings: date, days to report, EPS estimate, 7/14-day highlight)
 
-### Alokacja, watchlist, alerty
+### Allocation, watchlist, alerts
 
-- **Alokacja** – sektor / region (USA / EU / PL) + ekspozycja walutowa (FX) + dekompozycja FX
-- **Rebalancing** – docelowe udziały, dryf, sugestie dokupień i rozdział nowej gotówki
-- **Watchlist** – symbole spoza portfela, zwroty 1M/3M/1Y vs średnia ważona portfela
-- **Alerty ROI** – próg ±X% z auto-odświeżaniem
-- **Alerty cenowe** – progi ceny (`price_alerts.json`)
+- **Allocation** – sector / region (USA / EU / PL) + FX exposure + FX decomposition
+- **Rebalancing** – target weights, drift, buy suggestions and new-cash allocation
+- **Watchlist** – symbols outside the portfolio, 1M/3M/1Y returns vs portfolio weighted average
+- **ROI alerts** – ±X% threshold with auto-refresh
+- **Price alerts** – price thresholds (`price_alerts.json`)
 
-### Konsensusy, sygnały, zwroty
+### Consensus, signals, returns
 
-- **Konsensusy** – targetMeanPrice, recommendationKey, upside %, pasek 52W; snapshoty w czasie
-- **Sygnały** – heurystyka *kup / trzymaj / sprzedaj* (technika 40% + konsensus 40% + P&L 20%), zgoda interwałów, momentum, backtest
-- **MWR / TWR** – stopa ważona przepływami (XIRR) i czasem; krótkie okresy (<90 dni) bez annualizacji
-- **Portfel vs benchmark** – S&P 500 / MSCI World / NASDAQ 100 / WIG20; beta, tracking error, IR
-- **Atrybucja i rolling returns** – wkład pozycji/sektorów, heatmapa rolling
-- **Scenariusze** – stress test top pozycji + Monte Carlo (bootstrap)
-- **Snapshoty portfela** – lokalny timeline wartości (`snapshots.json`), też dla importu CSV
-- **Cele i FIRE** – strona *Cele*: projekcja czasu do celu wartości (procent składany + dopłaty), liczba FIRE (reguła 4%), pokrycie wydatków dywidendami i wykres „dividend snowball"
+- **Consensus** – targetMeanPrice, recommendationKey, upside %, 52W bar; snapshots over time
+- **Signals** – *buy / hold / sell* heuristic (technicals 40% + consensus 40% + P&L 20%), timeframe agreement, momentum, backtest
+- **MWR / TWR** – money-weighted (XIRR) and time-weighted returns; short periods (<90 days) without annualization
+- **Portfolio vs benchmark** – S&P 500 / MSCI World / NASDAQ 100 / WIG20; beta, tracking error, IR
+- **Attribution and rolling returns** – position/sector contribution, rolling heatmap
+- **Scenarios** – stress test of top positions + Monte Carlo (bootstrap)
+- **Portfolio snapshots** – local value timeline (`snapshots.json`), also for CSV import
+- **Goals and FIRE** – *Goals* page: time-to-goal projection (compound + contributions), FIRE number (4% rule), dividend expense coverage and “dividend snowball” chart
 
-### Eksport (Portfolio)
+### Export (Portfolio)
 
-| Format | Zawartość |
-|--------|-----------|
-| **PDF** | Podsumowanie, wykresy PNG (kaleido), tabela pozycji |
-| **Excel** | *Portfolio* (pozycje + KPI), *Historia* (timeline, transakcje, round-tripy), *Analiza* (trade stats, cost basis, alokacja) |
+| Format | Contents |
+|--------|----------|
+| **PDF** | Summary, PNG charts (kaleido), positions table |
+| **Excel** | *Portfolio* (positions + KPI), *History* (timeline, transactions, round-trips), *Analysis* (trade stats, cost basis, allocation) |
 
-PDF: czcionka z `assets/fonts/` lub systemowa (Arial). Wymaga `fpdf2` i `kaleido`.
+PDF: font from `assets/fonts/` or system (Arial). Requires `fpdf2` and `kaleido`.
 
-### Biblioteki techniczne (opcjonalne)
+### Optional technical libraries
 
 ```powershell
-# pandas-ta — wymaga Python 3.12+ (już w requirements.txt przy 3.12+)
+# pandas-ta — requires Python 3.12+ (already in requirements.txt on 3.12+)
 .\.venv\Scripts\python -m pip install pandas-ta
 
-# TA-Lib — najpierw natywna biblioteka C (Windows: wheel z https://github.com/cgohlke/talib-build/releases)
+# TA-Lib — install the native C library first (Windows: wheel from https://github.com/cgohlke/talib-build/releases)
 .\.venv\Scripts\python -m pip install TA-Lib
 ```
 
-Kolejność silników w `core/technicals.py`: **pandas_ta** → **TA-Lib** → **pandas**.
+Engine order in `core/technicals.py`: **pandas_ta** → **TA-Lib** → **pandas**.
 
-## Eksport XTB
+## XTB export
 
-Natywny plik Excel z arkuszami:
+Native Excel file with sheets:
 
-- **Cash Operations** – otwarte pozycje (z historii zakupów/sprzedaży) oraz timeline / dywidendy
-- **Closed Positions** – zamknięte transakcje
+- **Cash Operations** – open positions (from buy/sell history) plus timeline / dividends
+- **Closed Positions** – closed trades
 
-## Mapowanie tickerów
+## Ticker mapping
 
-Edytuj `core/importer_maps.py` (np. `VWCE` → `VWCE.DE`, `XTB.PL` → `XTB.WA`).
+Edit `core/importer_maps.py` (e.g. `VWCE` → `VWCE.DE`, `XTB.PL` → `XTB.WA`).
 
 ## CI
 
-Przy pushu / PR na `main` lub `master` GitHub Actions uruchamia:
+On push / PR to `main` or `master`, GitHub Actions runs:
 
 1. `python -m compileall` (core, ui, pages, main.py)
-2. `python -m scripts.ci_smoke` — import kluczowych modułów bez sieci i pliku XTB
+2. `python -m scripts.ci_smoke` — import key modules with no network and no XTB file
 
-Macierz: **Python 3.11** i **3.12** (`pandas-ta` tylko na 3.12+).
+Matrix: **Python 3.11** and **3.12** (`pandas-ta` only on 3.12+).
 
-## Pierwsza instalacja
+## First-time setup
 
-Wymagania: **Python 3.12+** zalecane (pełna analiza techniczna z `pandas-ta`);
-**3.11** też działa (CI), bez `pandas-ta`. Folder `.venv` nie jest w repozytorium.
+Requirements: **Python 3.12+** recommended (full technical analysis with `pandas-ta`);
+**3.11** also works (CI), without `pandas-ta`. The `.venv` folder is not in the repository.
 
-### 1. Pobierz projekt
+### 1. Clone the project
 
 ```powershell
 git clone https://github.com/Zabqus/xtb-portfolio-tracker.git
 cd xtb-portfolio-tracker
 ```
 
-### 2. Sprawdź wersję Pythona
+### 2. Check the Python version
 
 ```powershell
 py --version
 ```
 
-Jeśli `python` nie działa, a `py` tak — w kolejnych krokach używaj launchera `py`.
+If `python` does not work but `py` does — use the `py` launcher in the next steps.
 
-### 3. Utwórz środowisko wirtualne
+### 3. Create a virtual environment
 
 ```powershell
 py -3.12 -m venv .venv
 ```
 
-### 4. Zainstaluj zależności
+### 4. Install dependencies
 
-W PowerShell ścieżka musi zaczynać się od `.\`:
+In PowerShell the path must start with `.\`:
 
 ```powershell
 .\.venv\Scripts\python -m pip install --upgrade pip
 .\.venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-### 5. Uruchom aplikację
+### 5. Run the app
 
 ```powershell
 .\.venv\Scripts\python -m streamlit run main.py
 ```
 
-Opcjonalny skrót Windows (`uruchom.bat` w katalogu projektu):
+Optional Windows shortcut (`uruchom.bat` in the project directory):
 
 ```bat
 @echo off
@@ -227,11 +227,11 @@ cd /d "%~dp0"
 pause
 ```
 
-### Problemy?
+### Troubleshooting
 
-| Objaw | Rozwiązanie |
-|-------|-------------|
-| `Permission denied` przy `venv` | Usuń niepełny folder: `Remove-Item -Recurse -Force .venv`, zamknij inne terminale / procesy Pythona, spróbuj ponownie |
-| Błąd o module `.venv` | Użyj `.\.venv\Scripts\python`, nie `.venv\Scripts\python` |
-| `python` nie znaleziony | Użyj `py -3.12` zamiast `python` |
-| Brak ceny Yahoo dla tickera | Dodaj mapowanie w `core/importer_maps.py` |
+| Symptom | Fix |
+|---------|-----|
+| `Permission denied` on `venv` | Remove the incomplete folder: `Remove-Item -Recurse -Force .venv`, close other terminals / Python processes, try again |
+| Error about a `.venv` module | Use `.\.venv\Scripts\python`, not `.venv\Scripts\python` |
+| `python` not found | Use `py -3.12` instead of `python` |
+| Missing Yahoo price for a ticker | Add a mapping in `core/importer_maps.py` |
