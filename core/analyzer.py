@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from core.currencies import convert_amount, fetch_rates_to_currency
+from core.currencies import convert_amount, currency_from_ticker, fetch_rates_to_currency
 from core.market_data import fetch_last_prices
 
 
@@ -44,11 +44,19 @@ def analyze_portfolio(
         raise ValueError(f"Missing portfolio columns: {required - set(portfolio.columns)}")
 
     account_currency = portfolio.attrs.get("account_currency", "EUR")
-    target = (display_currency or account_currency).upper()
+    raw_target = (display_currency or account_currency)
+    target = str(raw_target).upper()
+    # Multi-account nie ma pary FX — wymuś realną walutę wyświetlania.
+    if target in ("MULTI", "", "NAN", "NONE", "<NA>"):
+        target = "PLN"
 
     result = portfolio.copy()
     if "currency" not in result.columns:
-        result["currency"] = account_currency
+        # Waluta notowań instrumentu, nie waluta rozliczeniowa konta.
+        if "ticker_xtb" in result.columns:
+            result["currency"] = result["ticker_xtb"].map(currency_from_ticker)
+        else:
+            result["currency"] = "EUR"
 
     tickers_tuple = tuple(sorted(result["ticker_yahoo"].unique()))
     price_map = fetch_last_prices(tickers_tuple)
@@ -59,7 +67,11 @@ def analyze_portfolio(
     result["value_native"] = result["quantity"] * result["market_price"]
     result["pnl_native"] = result["value_native"] - result["cost_native"]
 
-    currencies = set(result["currency"].dropna().unique()) | {target}
+    currencies = {
+        str(c).upper()
+        for c in result["currency"].dropna().unique()
+        if str(c).upper() not in ("MULTI", "", "NAN", "NONE", "<NA>")
+    } | {target}
     rates = fetch_rates_to_currency(currencies, target)
 
     result["position_cost"] = result.apply(

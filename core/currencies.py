@@ -104,12 +104,17 @@ def detect_account_currency(
     return "EUR"
 
 
+_NON_FX_CURRENCIES = frozenset({"MULTI", "NAN", "NONE", "<NA>", ""})
+
+
 def _fx_rate(source: str, target: str, pln_cache: dict[str, float]) -> float:
     """Mnożnik: amount_in_source * rate = amount_in_target (via PLN hub)."""
-    if source == target:
+    src = str(source).upper()
+    dst = str(target).upper()
+    if src == dst:
         return 1.0
-    pln_per_src = fetch_fx_rate_to_pln_cached(source, pln_cache)
-    pln_per_dst = fetch_fx_rate_to_pln_cached(target, pln_cache)
+    pln_per_src = fetch_fx_rate_to_pln_cached(src, pln_cache)
+    pln_per_dst = fetch_fx_rate_to_pln_cached(dst, pln_cache)
     return pln_per_src / pln_per_dst
 
 
@@ -118,11 +123,14 @@ def fetch_rates_to_currency(
     target_currency: str,
 ) -> dict[str, float]:
     """Pobiera kursy przeliczenia z każdej waluty źródłowej do waluty docelowej."""
+    target = str(target_currency).upper()
     pln_cache: dict[str, float] = {}
-    rates: dict[str, float] = {target_currency: 1.0}
+    rates: dict[str, float] = {target: 1.0}
     for currency in source_currencies:
-        if currency not in rates:
-            rates[currency] = _fx_rate(currency, target_currency, pln_cache)
+        code = str(currency).upper()
+        if code in rates or code in _NON_FX_CURRENCIES:
+            continue
+        rates[code] = _fx_rate(code, target, pln_cache)
     return rates
 
 
@@ -135,6 +143,10 @@ def convert_amount(
     """Przelicza kwotę przy użyciu wcześniej pobranych kursów."""
     if pd.isna(amount):
         return float("nan")
-    if from_currency == to_currency:
+    src = str(from_currency).upper()
+    dst = str(to_currency).upper()
+    if src == dst:
         return float(amount)
-    return float(amount) * rates[from_currency]
+    if src not in rates:
+        raise KeyError(f"Brak kursu FX dla waluty: {src}")
+    return float(amount) * rates[src]

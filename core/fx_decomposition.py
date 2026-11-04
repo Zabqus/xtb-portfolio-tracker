@@ -21,6 +21,8 @@ from core.currencies import convert_amount, fetch_rates_to_currency
 
 MIN_QTY = 1e-9
 MIN_COST = 1e-12
+# Pseudo-waluta multi-account i śmieci z pandas — nie mają pary FX.
+_NON_FX_CURRENCIES = frozenset({"MULTI", "NAN", "NONE", "<NA>", ""})
 
 
 @dataclass
@@ -152,31 +154,42 @@ def compute_fx_decomposition(
         return pd.DataFrame()
 
     display = str(analyzed.attrs.get("display_currency", account_currency)).upper()
+    if display in _NON_FX_CURRENCIES:
+        display = "PLN"
     rates = dict(analyzed.attrs.get("fx_rates", {display: 1.0}))
     rates.setdefault(display, 1.0)
 
     result = analyzed.copy()
     tickers = set(result["ticker_xtb"].astype(str)) if "ticker_xtb" in result.columns else set()
 
-    needed = {display, str(account_currency).upper()}
+    needed = {display}
+    acc = str(account_currency).upper()
+    if acc not in _NON_FX_CURRENCIES:
+        needed.add(acc)
     if "account_currency" in result.columns:
         needed.update(
             str(c).upper()
             for c in result["account_currency"].dropna().unique()
-            if str(c).upper() not in ("MULTI", "NAN", "NONE", "<NA>", "")
+            if str(c).upper() not in _NON_FX_CURRENCIES
         )
     if "currency" in result.columns:
-        needed.update(str(c).upper() for c in result["currency"].dropna().unique())
-    missing = {c for c in needed if c not in rates}
+        needed.update(
+            str(c).upper()
+            for c in result["currency"].dropna().unique()
+            if str(c).upper() not in _NON_FX_CURRENCIES
+        )
+    supported = {c for c in needed if c not in _NON_FX_CURRENCIES}
+    missing = {c for c in supported if c not in rates}
     if missing:
-        rates.update(fetch_rates_to_currency(needed, display))
+        rates.update(fetch_rates_to_currency(supported, display))
 
+    default_acc = acc if acc not in _NON_FX_CURRENCIES else display
     trade_rates = _implied_purchase_rates_from_trades(
         trades if trades is not None else pd.DataFrame(),
         tickers,
         display_currency=display,
         rates=rates,
-        default_account_currency=str(account_currency).upper(),
+        default_account_currency=default_acc,
     )
 
     fx_rate_purchase: list[float] = []

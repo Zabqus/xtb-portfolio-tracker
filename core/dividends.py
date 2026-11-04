@@ -36,15 +36,14 @@ def parse_dividends(cash_ops: pd.DataFrame) -> pd.DataFrame:
     ticker = div["Ticker"] if "Ticker" in div.columns else pd.Series("—", index=div.index)
     comment = div["Comment"] if "Comment" in div.columns else pd.Series("", index=div.index)
 
-    currency = (
-        div["Currency"]
-        if "Currency" in div.columns
-        else (
-            div["account_currency"]
-            if "account_currency" in div.columns
-            else pd.Series(pd.NA, index=div.index)
-        )
-    )
+    if "Currency" in div.columns:
+        currency = div["Currency"].astype("string").str.upper()
+    else:
+        currency = pd.Series(pd.NA, index=div.index, dtype="string")
+    # Multi-account / braki w eksporcie: Amount jest w walucie konta.
+    if "account_currency" in div.columns:
+        account_ccy = div["account_currency"].astype("string").str.upper()
+        currency = currency.fillna(account_ccy)
 
     result = pd.DataFrame(
         {
@@ -52,7 +51,7 @@ def parse_dividends(cash_ops: pd.DataFrame) -> pd.DataFrame:
             "year": div["year"].astype(int),
             "ticker_xtb": ticker.fillna("—").astype(str).str.strip().str.upper(),
             "amount": div["amount"],
-            "currency": currency.astype("string").str.upper(),
+            "currency": currency,
             "comment": comment.fillna("").astype(str),
         }
     )

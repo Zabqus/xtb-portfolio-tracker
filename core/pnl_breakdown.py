@@ -12,6 +12,22 @@ from core.currencies import convert_amount, fetch_rates_to_currency
 from core.dividends import parse_dividends
 
 BELKA_RATE = 0.19
+_NON_FX_CURRENCIES = frozenset({"MULTI", "", "<NA>", "NAN", "NONE"})
+
+
+def _resolve_fx_currency(raw: object, fallback: str) -> str:
+    """Zwraca prawdziwą walutę FX (MULTI / NaN → fallback)."""
+    # Nie używać `raw or ...` — pd.NA nie ma bool().
+    if raw is None or raw is pd.NA or (isinstance(raw, float) and pd.isna(raw)):
+        code = ""
+    else:
+        code = str(raw).strip().upper()
+        if code in ("NAN", "NONE", "<NA>"):
+            code = ""
+    if code in _NON_FX_CURRENCIES:
+        fb = str(fallback).strip().upper() if fallback is not None else ""
+        return fb if fb not in _NON_FX_CURRENCIES else "PLN"
+    return code
 
 
 @dataclass
@@ -35,9 +51,10 @@ def _sum_closed_pnl(
     total = 0.0
     for _, row in closed.dropna(subset=["pnl"]).iterrows():
         # Profit/Loss w eksporcie XTB jest w walucie konta, nie instrumentu.
-        ccy = str(row.get("account_currency") or row.get("currency") or target_currency).upper()
-        if ccy in ("MULTI", "", "<NA>", "NAN", "NONE"):
-            ccy = target_currency
+        ccy = _resolve_fx_currency(
+            row.get("account_currency") or row.get("currency"),
+            target_currency,
+        )
         total += convert_amount(float(row["pnl"]), ccy, target_currency, rates)
     return total
 
@@ -51,12 +68,11 @@ def _sum_dividends(
     div = parse_dividends(cash_ops) if cash_ops is not None else pd.DataFrame()
     if div.empty:
         return 0.0
+    fallback = _resolve_fx_currency(default_currency, target_currency)
     total = 0.0
     for _, row in div.iterrows():
         amount = float(row["amount"])
-        source_currency = str(row.get("currency", default_currency)).upper()
-        if not source_currency or source_currency in ("<NA>", "NAN", "NONE", "MULTI"):
-            source_currency = default_currency
+        source_currency = _resolve_fx_currency(row.get("currency"), fallback)
         total += convert_amount(amount, source_currency, target_currency, rates)
     return float(total)
 
@@ -79,8 +95,12 @@ def compute_pnl_breakdown(
 
     Wszystkie kwoty w walucie wyświetlania portfela.
     """
-    currency = str(analyzed.attrs.get("display_currency", account_currency))
+    currency = _resolve_fx_currency(
+        analyzed.attrs.get("display_currency", account_currency),
+        "PLN",
+    )
     rates = dict(analyzed.attrs.get("fx_rates", {currency: 1.0}))
+    rates.setdefault(currency, 1.0)
     needed_currencies: set[str] = {currency}
     needed_currencies.update(
         str(c).upper()
@@ -100,15 +120,17 @@ def compute_pnl_breakdown(
     else:
         needed_currencies.add(str(account_currency).upper())
 
-    supported = {c for c in needed_currencies if c not in ("MULTI", "", "<NA>", "NAN", "NONE")}
+    supported = {c for c in needed_currencies if c not in _NON_FX_CURRENCIES}
     missing_rates = supported - set(rates.keys())
     if missing_rates:
         rates.update(fetch_rates_to_currency(supported, currency))
 
+    dividend_default = _resolve_fx_currency(account_currency, currency)
+
     valid = analyzed.dropna(subset=["pnl"])
     unrealized = float(valid["pnl"].sum()) if not valid.empty else 0.0
     realized = _sum_closed_pnl(closed, currency, rates)
-    dividends = _sum_dividends(cash_ops, currency, rates, str(account_currency).upper())
+    dividends = _sum_dividends(cash_ops, currency, rates, dividend_default)
     tax = _estimate_tax(realized, dividends)
     total = unrealized + realized + dividends - tax
 
