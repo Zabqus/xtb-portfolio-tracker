@@ -8,7 +8,7 @@ import streamlit as st
 from core.session import get_analyzed_open, get_display_currency, get_portfolio_timeline, get_report, init_session_state
 from ui.kpi_dashboard import render_kpi_wall
 from ui.sidebar import render_import_sidebar
-from ui.theme import bootstrap_page
+from ui.theme import bootstrap_page, section_header
 
 st.set_page_config(
     page_title="XTB Portfolio Tracker",
@@ -19,7 +19,7 @@ st.set_page_config(
 bootstrap_page()
 init_session_state()
 
-st.title("📈 XTB Portfolio Tracker")
+st.title("XTB Portfolio Tracker")
 st.caption("Lokalny dashboard do analizy portfela akcji i ETF-ów z XTB")
 
 render_import_sidebar()
@@ -27,42 +27,62 @@ render_import_sidebar()
 report = get_report()
 
 if report is None:
-    st.info("Wgraj plik raportu XTB w panelu bocznym, aby rozpocząć analizę.")
-    st.markdown(
-        """
-        ### Podstrony
+    st.info("Wgraj raport XTB w panelu bocznym, aby rozpocząć analizę.")
 
-        - **Strona główna** – dashboard KPI (TWR, MWR, Sharpe, alerty) ze sparkline'ami
-        - **Portfolio** – otwarte pozycje, wykresy, metryki PnL
-        - **Pozycja** – wykres 1Y/3Y/5Y, fundamenty, benchmark, timing wejścia
-        - **Historia** – timeline, trade analytics, Belka, kalendarz (dywidendy + wyniki)
-        - **Analiza** – MA, RSI, MACD, Bollinger Bands (pandas_ta)
-        - **Watchlist** – tickery spoza portfela, zwroty i porównanie z portfelem
-        - **Alokacja** – podział sektorowy i geograficzny (USA / EU / PL)
-        - **Eksport** – PDF i Excel (.xlsx) ze strony Portfolio
-        - **Alerty** – pozycje powyżej progu ±X% ROI (w aplikacji, bez powiadomień systemowych)
-        - **Konsensusy i sygnały** – cele analityków oraz sygnały kup / trzymaj / sprzedaj
-        - **Zwroty** – prawdziwa stopa zwrotu (MWR/XIRR + TWR), portfel vs benchmark, snapshoty
-        - **Cele i FIRE** – cel wartości portfela, niezależność finansowa, dividend snowball
-        - **Słownik** – krótkie wyjaśnienia wszystkich pojęć używanych w aplikacji
+    section_header("Jak zacząć", "Trzy kroki do pierwszego podglądu portfela")
+    step1, step2, step3 = st.columns(3)
+    with step1:
+        st.markdown("**1. Eksport z XTB**")
+        st.caption("Pobierz Excel z *Cash Operations* i *Closed Positions*.")
+    with step2:
+        st.markdown("**2. Import**")
+        st.caption("Wgraj plik w sidebarze — dane są cache'owane między stronami.")
+    with step3:
+        st.markdown("**3. Analiza**")
+        st.caption("KPI, pozycje, historia, alokacja, zwroty i cele — w menu po lewej.")
 
-        ### Wskazówki
+    st.divider()
 
-        1. Pobierz raport Excel z platformy XTB (*Cash Operations* + *Closed Positions*).
-        2. Wgraj plik w sidebarze – dane są cache'owane między podstronami.
-        3. Opcjonalnie **Multi-account**: dwa eksporty (np. PLN + EUR) → jeden widok majątku.
-        4. Wybierz walutę wyświetlania (PLN / EUR / USD / GBP).
-        """
+    with st.expander("Co znajdziesz w aplikacji", expanded=False):
+        left, right = st.columns(2)
+        with left:
+            st.markdown(
+                """
+                - **Strona główna** — dashboard KPI (TWR, MWR, Sharpe)
+                - **Portfolio** — otwarte pozycje, PnL, ryzyko, eksport
+                - **Pozycja** — wykres, fundamenty, timing wejścia
+                - **Historia** — timeline, Belka, kalendarz
+                - **Analiza** — MA, RSI, MACD, Bollinger
+                - **Watchlist** — tickery spoza portfela
+                """
+            )
+        with right:
+            st.markdown(
+                """
+                - **Alokacja** — sektor / region / FX + rebalancing
+                - **Alerty** — progi ROI i alerty cenowe
+                - **Konsensusy** — ratingi analityków i sygnały
+                - **Zwroty** — MWR/TWR, benchmarki, snapshoty
+                - **Cele** — cel wartości, FIRE, dywidendy
+                - **Słownik** — wyjaśnienia pojęć (bez importu)
+                """
+            )
+
+    st.caption(
+        "Opcjonalnie: włącz **Multi-account** w sidebarze, aby połączyć dwa eksporty "
+        "(np. PLN + EUR) w jeden widok majątku."
     )
     st.stop()
 
+# --- Załadowany raport ---
 if report.is_merged and report.account_labels:
-    st.success(f"Połączono konta: **{', '.join(report.account_labels)}**")
+    labels = ", ".join(report.account_labels)
+    st.caption(f"Połączono konta · **{labels}**")
     for label in report.account_labels:
         fn = (report.source_filenames or {}).get(label, "—")
         st.caption(f"{label}: {fn}")
 else:
-    st.success(f"Załadowano: **{report.filename}**")
+    st.caption(f"Załadowano · **{report.filename}**")
 
 closed_n = len(report.closed_positions) if report.closed_positions is not None else 0
 
@@ -88,13 +108,7 @@ if analyzed is not None and not analyzed.empty:
         analyzed,
         timeline,
         currency,
-        title="📊 Dashboard analityczny",
+        title="Dashboard analityczny",
     )
 else:
     st.caption("Dashboard KPI pojawi się po poprawnej analizie otwartych pozycji.")
-
-st.divider()
-st.caption(
-    "Przejdź do **Portfolio**, **Pozycja**, **Historia**, **Analiza**, **Watchlist**, "
-    "**Alokacja**, **Zwroty**, **Cele** lub **Słownik** w menu po lewej."
-)

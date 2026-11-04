@@ -55,20 +55,35 @@ _CRITICAL_CSS = {
 _CSS_SHARED = """
 <style>
 .block-container {
-    padding-top: 2.2rem;
-    padding-bottom: 3rem;
-    max-width: 1280px;
+    padding-top: 1.6rem;
+    padding-bottom: 3.5rem;
+    max-width: 1240px;
 }
-h1 { font-weight: 750; letter-spacing: -0.02em; }
-h2 { font-weight: 700; letter-spacing: -0.01em; margin-top: 0.4rem; }
-h3 { font-weight: 650; }
+/* Hierarchy: title → section → body → caption */
+h1 {
+    font-weight: 720;
+    letter-spacing: -0.025em;
+    line-height: 1.2;
+    margin-bottom: 0.15rem !important;
+}
+h2 {
+    font-weight: 680;
+    letter-spacing: -0.015em;
+    margin-top: 0.35rem;
+    margin-bottom: 0.35rem !important;
+}
+h3 {
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.25rem !important;
+}
+.stCaption, [data-testid="stCaptionContainer"] {
+    line-height: 1.45;
+}
 .stButton > button, .stDownloadButton > button {
     border-radius: 10px;
     font-weight: 600;
-    transition: all 0.15s ease;
-}
-.stButton > button:hover, .stDownloadButton > button:hover {
-    transform: translateY(-1px);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 [data-testid="stDataFrame"] {
     border-radius: 12px;
@@ -76,12 +91,32 @@ h3 { font-weight: 650; }
 }
 [data-testid="stExpander"] { border-radius: 12px; }
 [data-testid="stExpander"] summary { font-weight: 600; }
-hr { margin: 1.4rem 0; }
+hr {
+    margin: 1.1rem 0 1.35rem 0;
+    border: none;
+    height: 1px;
+    opacity: 0.65;
+}
+div[data-testid="stHorizontalBlock"] {
+    gap: 0.85rem;
+}
+[data-testid="stMetric"] {
+    height: 100%;
+}
+/* Soften default Streamlit success/info banners */
+div[data-testid="stAlert"] {
+    border-radius: 10px;
+    padding: 0.65rem 0.9rem;
+}
 @media (max-width: 640px) {
-    .block-container { padding-left: 0.8rem; padding-right: 0.8rem; padding-top: 1.4rem; }
-    [data-testid="stMetricValue"] { font-size: 1.25rem; }
-    [data-testid="stMetric"] { padding: 12px 14px; }
-    h1 { font-size: 1.6rem; }
+    .block-container {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+        padding-top: 1.1rem;
+    }
+    [data-testid="stMetricValue"] { font-size: 1.2rem !important; }
+    [data-testid="stMetric"] { padding: 12px 14px !important; }
+    h1 { font-size: 1.55rem; }
 }
 </style>
 """
@@ -124,10 +159,10 @@ div[data-testid="stCheckbox"] label {
     background-color: #FFFFFF !important;
 }
 [data-testid="stPlotlyChart"] {
-    background-color: #FFFFFF;
+    background-color: transparent;
     border-radius: 12px;
-    border: 1px solid #E2E8F0;
-    padding: 4px;
+    border: 1px solid #F1F5F9;
+    padding: 2px;
 }
 div[data-testid="stAlert"] p,
 div[data-testid="stAlert"] span {
@@ -165,10 +200,10 @@ div[data-testid="stCheckbox"] label {
     background-color: #1E293B !important;
 }
 [data-testid="stPlotlyChart"] {
-    background-color: #1E293B;
+    background-color: transparent;
     border-radius: 12px;
-    border: 1px solid #334155;
-    padding: 4px;
+    border: 1px solid #1E293B;
+    padding: 2px;
 }
 div[data-testid="stAlert"] p { color: inherit; }
 """
@@ -202,26 +237,37 @@ _CSS_LIGHT = f"""
 {_CSS_WIDGETS_LIGHT}
 [data-testid="stMetric"] {{
     background: #FFFFFF;
-    border: 1px solid #E2E8F0;
-    border-radius: 14px;
-    padding: 16px 18px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-    transition: box-shadow 0.15s ease, transform 0.15s ease;
+    border: 1px solid #E8EEF5;
+    border-left: 3px solid #2563EB;
+    border-radius: 12px;
+    padding: 14px 16px 12px 14px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }}
 [data-testid="stMetric"]:hover {{
-    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
-    transform: translateY(-1px);
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.06);
+    border-color: #D6E0EC;
 }}
 [data-testid="stMetricLabel"] p {{
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     font-weight: 600;
     color: #64748B;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.04em;
 }}
-[data-testid="stMetricValue"] {{ font-weight: 720; font-size: 1.55rem; color: #0F172A; }}
-.stTabs [data-baseweb="tab-list"] {{ gap: 4px; border-bottom: 1px solid #E2E8F0; }}
-.stTabs [data-baseweb="tab"] {{ border-radius: 8px 8px 0 0; padding: 8px 16px; font-weight: 600; }}
+[data-testid="stMetricValue"] {{
+    font-weight: 700;
+    font-size: 1.48rem;
+    color: #0F172A;
+    letter-spacing: -0.02em;
+}}
+[data-testid="stMetricDelta"] {{ font-size: 0.85rem; }}
+.stTabs [data-baseweb="tab-list"] {{ gap: 2px; border-bottom: 1px solid #E8EEF5; }}
+.stTabs [data-baseweb="tab"] {{
+    border-radius: 8px 8px 0 0;
+    padding: 8px 14px;
+    font-weight: 600;
+}}
 .stTabs [aria-selected="true"] {{ background: #EFF6FF; color: #2563EB; }}
 .stButton > button, .stDownloadButton > button {{
     border: 1px solid #E2E8F0;
@@ -230,17 +276,17 @@ _CSS_LIGHT = f"""
 }}
 .stButton > button:hover, .stDownloadButton > button:hover {{
     border-color: #2563EB;
-    box-shadow: 0 3px 10px rgba(37, 99, 235, 0.15);
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
 }}
-[data-testid="stDataFrame"] {{ border: 1px solid #E2E8F0; }}
-[data-testid="stExpander"] {{ border: 1px solid #E2E8F0; background: #FFFFFF; }}
+[data-testid="stDataFrame"] {{ border: 1px solid #E8EEF5; }}
+[data-testid="stExpander"] {{ border: 1px solid #E8EEF5; background: #FFFFFF; }}
 [data-testid="stSidebar"] {{
     background: #F8FAFC;
-    border-right: 1px solid #E2E8F0;
+    border-right: 1px solid #E8EEF5;
 }}
-[data-testid="stSidebar"] h2 {{ font-size: 1.15rem; color: #0F172A; }}
+[data-testid="stSidebar"] h2 {{ font-size: 1.1rem; color: #0F172A; }}
 [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label {{ color: #334155; }}
-div[data-testid="stAlert"] {{ border-radius: 10px; }}
+hr {{ background: #E8EEF5; }}
 </style>
 """
 
@@ -252,55 +298,62 @@ _CSS_DARK = f"""
 }}
 {_CSS_WIDGETS_DARK}
 [data-testid="stMetric"] {{
-    background: #1E293B;
-    border: 1px solid #334155;
-    border-radius: 14px;
-    padding: 16px 18px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-    transition: box-shadow 0.15s ease, transform 0.15s ease;
+    background: #1A2436;
+    border: 1px solid #2A3649;
+    border-left: 3px solid #3B82F6;
+    border-radius: 12px;
+    padding: 14px 16px 12px 14px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }}
 [data-testid="stMetric"]:hover {{
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-    transform: translateY(-1px);
+    box-shadow: 0 3px 14px rgba(0, 0, 0, 0.28);
+    border-color: #3A4A63;
 }}
 [data-testid="stMetricLabel"] p {{
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     font-weight: 600;
     color: #94A3B8;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.04em;
 }}
-[data-testid="stMetricValue"] {{ font-weight: 720; font-size: 1.55rem; color: #F1F5F9; }}
-.stTabs [data-baseweb="tab-list"] {{ gap: 4px; border-bottom: 1px solid #334155; }}
+[data-testid="stMetricValue"] {{
+    font-weight: 700;
+    font-size: 1.48rem;
+    color: #F1F5F9;
+    letter-spacing: -0.02em;
+}}
+[data-testid="stMetricDelta"] {{ font-size: 0.85rem; }}
+.stTabs [data-baseweb="tab-list"] {{ gap: 2px; border-bottom: 1px solid #2A3649; }}
 .stTabs [data-baseweb="tab"] {{
     border-radius: 8px 8px 0 0;
-    padding: 8px 16px;
+    padding: 8px 14px;
     font-weight: 600;
     color: #94A3B8;
     background: transparent;
 }}
 .stTabs [aria-selected="true"] {{ background: #1E3A5F; color: #60A5FA; }}
 .stButton > button, .stDownloadButton > button {{
-    border: 1px solid #334155;
-    background: #1E293B;
+    border: 1px solid #2A3649;
+    background: #1A2436;
     color: #E2E8F0;
 }}
 .stButton > button:hover, .stDownloadButton > button:hover {{
     border-color: #3B82F6;
-    box-shadow: 0 3px 12px rgba(59, 130, 246, 0.25);
+    box-shadow: 0 2px 10px rgba(59, 130, 246, 0.2);
 }}
-[data-testid="stDataFrame"] {{ border: 1px solid #334155; }}
+[data-testid="stDataFrame"] {{ border: 1px solid #2A3649; }}
 [data-testid="stExpander"] {{
-    border: 1px solid #334155;
-    background: #1E293B;
+    border: 1px solid #2A3649;
+    background: #1A2436;
 }}
 [data-testid="stSidebar"] {{
     background: #0B1220;
-    border-right: 1px solid #334155;
+    border-right: 1px solid #2A3649;
 }}
-[data-testid="stSidebar"] h2 {{ font-size: 1.15rem; color: #F1F5F9; }}
+[data-testid="stSidebar"] h2 {{ font-size: 1.1rem; color: #F1F5F9; }}
 [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label {{ color: #CBD5E1; }}
-div[data-testid="stAlert"] {{ border-radius: 10px; }}
+hr {{ background: #2A3649; }}
 </style>
 """
 
@@ -428,16 +481,16 @@ def metric_card_style() -> dict[str, str]:
     """Argumenty dla streamlit_extras.metric_cards.style_metric_cards."""
     if is_dark_theme():
         return {
-            "background_color": "#1E293B",
+            "background_color": "#1A2436",
             "border_left_color": "#3B82F6",
-            "border_color": "#334155",
-            "box_shadow": "rgba(0,0,0,0.35)",
+            "border_color": "#2A3649",
+            "box_shadow": "rgba(0,0,0,0.22)",
         }
     return {
         "background_color": "#FFFFFF",
         "border_left_color": "#2563EB",
-        "border_color": "#E2E8F0",
-        "box_shadow": "rgba(15, 23, 42, 0.06)",
+        "border_color": "#E8EEF5",
+        "box_shadow": "rgba(15, 23, 42, 0.04)",
     }
 
 
@@ -457,40 +510,61 @@ def muted_text_color() -> str:
 def glossary_term_html(term: str, definition: str) -> str:
     """HTML karty pojęcia w słowniku — dopasowany do motywu."""
     if is_dark_theme():
-        bg, border, accent, title, body, muted = (
-            "#1E293B",
-            "#334155",
+        bg, border, accent, title, body = (
+            "#1A2436",
+            "#2A3649",
             "#3B82F6",
             "#F1F5F9",
             "#CBD5E1",
-            "#64748B",
         )
     else:
-        bg, border, accent, title, body, muted = (
+        bg, border, accent, title, body = (
             "#FFFFFF",
-            "#E2E8F0",
+            "#E8EEF5",
             "#2563EB",
             "#0F172A",
             "#475569",
-            "#94A3B8",
         )
     term_html = term
     return f"""
         <div style="
             background:{bg};
             border:1px solid {border};
-            border-left:4px solid {accent};
+            border-left:3px solid {accent};
             border-radius:10px;
             padding:12px 16px;
             margin-bottom:10px;">
             <div style="font-weight:700;font-size:1.02rem;color:{title};">{term_html}</div>
-            <div style="color:{body};font-size:0.92rem;margin-top:3px;">{definition}</div>
+            <div style="color:{body};font-size:0.92rem;margin-top:3px;line-height:1.45;">{definition}</div>
         </div>
         """
 
 
 def section_header(title: str, subtitle: str | None = None) -> None:
-    """Spójny nagłówek sekcji z opcjonalnym podtytułem."""
-    st.subheader(title)
-    if subtitle:
-        st.caption(subtitle)
+    """Spójny nagłówek sekcji z akcentem i opcjonalnym podtytułem."""
+    accent = accent_color()
+    muted = muted_text_color()
+    title_color = "#F1F5F9" if is_dark_theme() else "#0F172A"
+    sub = (
+        f'<div style="color:{muted};font-size:0.9rem;margin-top:3px;line-height:1.4;">'
+        f"{subtitle}</div>"
+        if subtitle
+        else ""
+    )
+    st.markdown(
+        f"""
+        <div style="
+            margin:0.15rem 0 0.95rem 0;
+            padding:2px 0 2px 12px;
+            border-left:3px solid {accent};">
+            <div style="
+                font-weight:700;
+                font-size:1.22rem;
+                letter-spacing:-0.015em;
+                color:{title_color};
+                line-height:1.25;">{title}</div>
+            {sub}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )

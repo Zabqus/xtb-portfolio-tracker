@@ -7,6 +7,7 @@ import streamlit as st
 from core.dashboard_kpis import DashboardKpis, compute_dashboard_kpis
 from core.importer import XTBReport
 from ui.sparklines import build_sparkline
+from ui.theme import section_header
 
 
 def render_kpi_wall(
@@ -22,9 +23,9 @@ def render_kpi_wall(
     if analyzed is None or analyzed.empty:
         return None
 
-    st.subheader(title)
     spark_days = 30
     if show_sparkline_toggle:
+        section_header(title, "Kluczowe metryki portfela ze sparklines trendu")
         spark_choice = st.radio(
             "Trend sparkline",
             ["30 dni", "90 dni"],
@@ -33,7 +34,9 @@ def render_kpi_wall(
             label_visibility="collapsed",
         )
         spark_days = 90 if spark_choice == "90 dni" else 30
-        st.caption(f"Mini-wykresy pokazują trend z ostatnich **{spark_days}** dni.")
+        st.caption(f"Mini-wykresy · ostatnie **{spark_days}** dni")
+    else:
+        section_header(title)
 
     threshold = float(st.session_state.get("alert_threshold_pct", 10.0))
     kpis = compute_dashboard_kpis(
