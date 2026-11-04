@@ -18,6 +18,9 @@ PORTFOLIO_BENCHMARKS: dict[str, list[str]] = {
     "MSCI World": ["URTH", "IWDA.L", "SWDA.L"],
     "NASDAQ 100": ["^NDX", "QQQ"],
     "WIG20": ["^WIG20", "WIG20.WA"],
+    "mWIG40": ["MWIG40.WA", "^MWIG40"],
+    "WIG": ["WIG.WA", "^WIG"],
+    "Obligacje (TBSP / EU gov)": ["TBSP.WA", "EUN6.DE", "VETY.L", "IEAC.L"],
     "STOXX Europe 600": ["^STOXX", "EXSA.DE"],
 }
 

@@ -102,3 +102,88 @@ def dividends_per_ticker(div: pd.DataFrame) -> pd.DataFrame:
         last_date=("date", "max"),
     )
     return out.sort_values("total", ascending=False).reset_index()
+
+
+def _cash_ops_type_slice(cash_ops: pd.DataFrame, type_re: str) -> pd.DataFrame:
+    if cash_ops is None or cash_ops.empty or "Type" not in cash_ops.columns:
+        return pd.DataFrame()
+    mask = cash_ops["Type"].astype(str).str.contains(type_re, case=False, na=False)
+    # Odfiltruj czyste dywidendy z WHT (Type bywa "Withholding tax" vs "Dividend")
+    sliced = cash_ops[mask].copy()
+    if sliced.empty:
+        return pd.DataFrame()
+    sliced["date"] = pd.to_datetime(sliced.get("Time"), errors="coerce")
+    sliced = sliced.dropna(subset=["date"])
+    if sliced.empty:
+        return pd.DataFrame()
+    sliced["year"] = sliced["date"].dt.year.astype(int)
+    sliced["amount"] = pd.to_numeric(sliced.get("Amount"), errors="coerce")
+    sliced = sliced.dropna(subset=["amount"])
+    if sliced.empty:
+        return pd.DataFrame()
+
+    ticker = sliced["Ticker"] if "Ticker" in sliced.columns else pd.Series("—", index=sliced.index)
+    comment = sliced["Comment"] if "Comment" in sliced.columns else pd.Series("", index=sliced.index)
+    if "Currency" in sliced.columns:
+        currency = sliced["Currency"].astype("string").str.upper()
+    else:
+        currency = pd.Series(pd.NA, index=sliced.index, dtype="string")
+    if "account_currency" in sliced.columns:
+        account_ccy = sliced["account_currency"].astype("string").str.upper()
+        currency = currency.fillna(account_ccy)
+
+    return pd.DataFrame(
+        {
+            "date": sliced["date"],
+            "year": sliced["year"],
+            "ticker_xtb": ticker.fillna("—").astype(str).str.strip().str.upper(),
+            "amount": sliced["amount"],
+            "currency": currency,
+            "comment": comment.fillna("").astype(str),
+            "type": sliced["Type"].astype(str),
+        }
+    ).sort_values("date").reset_index(drop=True)
+
+
+def parse_withholding_tax(cash_ops: pd.DataFrame) -> pd.DataFrame:
+    """
+    Podatek u źródła (WHT) z Cash Operations.
+
+    Kolumny: date, year, ticker_xtb, amount, currency, comment, type.
+    Amount zwykle ujemny (obciążenie).
+    """
+    wht = _cash_ops_type_slice(cash_ops, WITHHOLDING_TYPE_RE)
+    if wht.empty:
+        return wht
+    # Nie myl dywidend zawierających słowo „tax” w komentarzu — Type już filtruje.
+    # Dodatkowo wyklucz wiersze typowo dywidendowe.
+    div_mask = wht["type"].str.contains(DIVIDEND_TYPE_RE, case=False, na=False)
+    # Zostaw wiersze, które są WHT nawet jeśli Type ma też „dividend” (rzadkie).
+    pure_div = div_mask & ~wht["type"].str.contains(WITHHOLDING_TYPE_RE, case=False, na=False)
+    return wht.loc[~pure_div].reset_index(drop=True)
+
+
+def withholding_by_year(wht: pd.DataFrame) -> pd.DataFrame:
+    """Suma |WHT| per rok (kolumny: year, amount — amount dodatnie)."""
+    if wht is None or wht.empty:
+        return pd.DataFrame(columns=["year", "amount"])
+    out = wht.copy()
+    out["amount"] = out["amount"].abs()
+    return (
+        out.groupby("year", as_index=False)["amount"]
+        .sum()
+        .sort_values("year")
+        .reset_index(drop=True)
+    )
+
+
+def withholding_summary(wht: pd.DataFrame, current_year: int | None = None) -> dict[str, float | int]:
+    """Zbiorcze metryki WHT (kwoty jako wartość bezwzględna)."""
+    if wht is None or wht.empty:
+        return {"total": 0.0, "current_year": 0.0, "count": 0}
+    abs_amt = wht["amount"].abs()
+    total = float(abs_amt.sum())
+    cy = 0.0
+    if current_year is not None:
+        cy = float(abs_amt.loc[wht["year"] == current_year].sum())
+    return {"total": total, "current_year": cy, "count": int(len(wht))}

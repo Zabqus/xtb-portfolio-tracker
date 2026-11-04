@@ -35,7 +35,8 @@ xtb_portfolio_tracker/
 │   ├── analyst_consensus.py, consensus_snapshots.py
 │   ├── signals.py, signal_snapshots.py, range_52w.py
 │   ├── dividends.py, dividend_calendar.py, earnings_calendar.py
-│   ├── tax_harvest.py, ike_ikze.py
+│   ├── tax_harvest.py, tax_loss_carry.py, belka_tax.py, nbp_fx.py, pit38_export.py
+│   ├── ike_ikze.py
 │   ├── allocation.py, rebalance.py, alerts.py, watchlist.py
 │   ├── snapshots.py, preferences.py, goals.py
 │   ├── technicals.py, timing_score.py, cost_basis.py
@@ -62,6 +63,7 @@ xtb_portfolio_tracker/
 
 Local user files (in `.gitignore`): `watchlist.json`, `trade_tags.json`,
 `user_preferences.json`, `price_alerts.json`, `snapshots.json`,
+`ticker_overrides.json`, `tax_loss_carry.json`,
 and optionally `consensus_snapshots.json` / `signal_snapshots.json`.
 
 ## Running the app
@@ -114,7 +116,9 @@ Open **http://localhost:8501** → upload the XTB export in the sidebar → brow
 - **MAE / MFE** – maximum adverse/favorable excursion while holding
 - **Round-trip tags** – manual entry/exit reasons (`trade_tags.json`)
 - **Cost basis** – average price history per ticker
-- **Belka tax** – 19% estimate per tax year + tax-loss harvesting + IKE/IKZE vs taxable comparison
+- **Belka tax** – 19% estimate per tax year with **NBP FX**, **WHT credit** from Cash Operations,
+  **loss carry-forward** ledger (5y / max 50%), tax-loss harvesting, **PIT-38 helper Excel**,
+  and IKE/IKZE vs taxable comparison
 - **Calendar** – dividends (metrics, ex-date, forward yield, cashflow, growth) + quarterly results (earnings: date, days to report, EPS estimate, 7/14-day highlight)
 
 ### Allocation, watchlist, alerts
@@ -130,7 +134,10 @@ Open **http://localhost:8501** → upload the XTB export in the sidebar → brow
 - **Consensus** – targetMeanPrice, recommendationKey, upside %, 52W bar; snapshots over time
 - **Signals** – *buy / hold / sell* heuristic (technicals 40% + consensus 40% + P&L 20%), timeframe agreement, momentum, backtest
 - **MWR / TWR** – money-weighted (XIRR) and time-weighted returns; short periods (<90 days) without annualization
-- **Portfolio vs benchmark** – S&P 500 / MSCI World / NASDAQ 100 / WIG20; beta, tracking error, IR
+- **Portfolio vs benchmark** – S&P 500 / MSCI World / NASDAQ 100 / WIG20 / mWIG40 / WIG /
+  bond proxy (TBSP / EU gov); beta, tracking error, IR
+- **Ticker mapping UX** – expanded built-in map + sidebar overrides (`ticker_overrides.json`)
+  when Yahoo has no price
 - **Attribution and rolling returns** – position/sector contribution, rolling heatmap
 - **Scenarios** – stress test of top positions + Monte Carlo (bootstrap)
 - **Portfolio snapshots** – local value timeline (`snapshots.json`), also for CSV import
@@ -166,14 +173,17 @@ Native Excel file with sheets:
 
 ## Ticker mapping
 
-Edit `core/importer_maps.py` (e.g. `VWCE` → `VWCE.DE`, `XTB.PL` → `XTB.WA`).
+Built-in map in `core/importer_maps.py` (e.g. `VWCE` → `VWCE.DE`, `XTB.PL` → `XTB.WA`).
+Missing Yahoo prices: use **Mapowanie tickerów** in the sidebar (writes `ticker_overrides.json`)
+or edit the built-in map.
 
 ## CI
 
 On push / PR to `main` or `master`, GitHub Actions runs:
 
 1. `python -m compileall` (core, ui, pages, main.py)
-2. `python -m scripts.ci_smoke` — import key modules with no network and no XTB file
+2. `python -m pytest tests/` — unit tests (FIFO, Belka/WHT/carry, XIRR, ticker maps)
+3. `python -m scripts.ci_smoke` — import key modules with no network and no XTB file
 
 Matrix: **Python 3.11** and **3.12** (`pandas-ta` only on 3.12+).
 

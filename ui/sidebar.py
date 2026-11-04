@@ -5,15 +5,77 @@ from __future__ import annotations
 import streamlit as st
 
 from core.currencies import SUPPORTED_CURRENCIES
+from core.importer_maps import (
+    delete_ticker_override,
+    load_ticker_overrides,
+    map_ticker_to_yahoo,
+    positions_missing_prices,
+    set_ticker_override,
+)
 from core.multi_account import MULTI_ACCOUNT_CURRENCY
 from core.session import (
     get_display_currency,
     get_report,
     init_session_state,
     process_uploads,
+    remap_tickers_after_override,
     set_display_currency,
 )
 from ui.theme import render_theme_selector
+
+
+def _render_ticker_mapping_panel() -> None:
+    """Lista braków Yahoo + szybkie dodanie mapowania (bez wymuszania fetch cen)."""
+    analyzed = st.session_state.get("analyzed_open")
+    missing = positions_missing_prices(analyzed)
+    overrides = load_ticker_overrides()
+
+    with st.expander(
+        f"Mapowanie tickerów ({len(missing)} bez ceny)" if missing else "Mapowanie tickerów",
+        expanded=bool(missing),
+    ):
+        if missing:
+            st.warning(
+                "Brak ceny Yahoo dla poniższych symboli — dodaj mapowanie "
+                "(np. `VWCE` → `VWCE.DE`)."
+            )
+            for row in missing[:12]:
+                st.caption(f"• **{row['ticker_xtb']}** → `{row['ticker_yahoo']}`")
+            if len(missing) > 12:
+                st.caption(f"…i {len(missing) - 12} kolejnych")
+        else:
+            st.caption("Wszystkie otwarte pozycje mają cenę (lub brak portfela).")
+
+        xtb_default = missing[0]["ticker_xtb"] if missing else ""
+        with st.form("ticker_override_form", clear_on_submit=True):
+            xtb_in = st.text_input("Symbol XTB", value=xtb_default, placeholder="VWCE")
+            yahoo_guess = map_ticker_to_yahoo(xtb_in) if xtb_in.strip() else ""
+            yahoo_in = st.text_input(
+                "Symbol Yahoo",
+                value=yahoo_guess,
+                placeholder="VWCE.DE",
+            )
+            submitted = st.form_submit_button("Zapisz mapowanie")
+            if submitted:
+                if not xtb_in.strip() or not yahoo_in.strip():
+                    st.error("Podaj oba symbole.")
+                else:
+                    set_ticker_override(xtb_in, yahoo_in)
+                    remap_tickers_after_override()
+                    st.success(f"Zapisano: {xtb_in.strip().upper()} → {yahoo_in.strip()}")
+                    st.rerun()
+
+        if overrides:
+            st.caption("Twoje nadpisania (`ticker_overrides.json`):")
+            for k, v in sorted(overrides.items()):
+                c1, c2 = st.columns([3, 1])
+                with c1:
+                    st.text(f"{k} → {v}")
+                with c2:
+                    if st.button("Usuń", key=f"del_override_{k}"):
+                        delete_ticker_override(k)
+                        remap_tickers_after_override()
+                        st.rerun()
 
 
 def render_import_sidebar() -> bool:
@@ -101,5 +163,8 @@ def render_import_sidebar() -> bool:
         if report.closed_positions is not None:
             n = len(report.closed_positions)
             st.caption(f"Zamknięte pozycje (łącznie): {n}")
+
+        st.divider()
+        _render_ticker_mapping_panel()
 
     return True

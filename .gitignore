@@ -23,6 +23,12 @@ trade_tags.json
 # Lokalne preferencje użytkownika (motyw itd.)
 user_preferences.json
 
+# Lokalne nadpisania tickerów XTB → Yahoo
+ticker_overrides.json
+
+# Lokalny ledżer strat kapitałowych (Belka / PIT-38)
+tax_loss_carry.json
+
 # Lokalne alerty cenowe użytkownika
 price_alerts.json
 

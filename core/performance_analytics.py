@@ -22,6 +22,9 @@ MULTI_BENCHMARK_NAMES: tuple[str, ...] = (
     "NASDAQ 100",
     "MSCI World",
     "WIG20",
+    "mWIG40",
+    "WIG",
+    "Obligacje (TBSP / EU gov)",
 )
 
 

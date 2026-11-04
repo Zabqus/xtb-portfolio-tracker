@@ -8,5 +8,6 @@ kaleido>=0.2.1
 fpdf2>=2.7.0
 yfinance>=0.2.36
 openpyxl>=3.1.0
+pytest>=8.0.0
 # Opcjonalnie (wymaga zainstalowanej biblioteki C TA-Lib przed pip):
 # TA-Lib>=0.4.28
