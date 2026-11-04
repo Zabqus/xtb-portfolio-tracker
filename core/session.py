@@ -180,6 +180,35 @@ def set_display_currency(currency: str) -> None:
     st.session_state.timeline_signature = None
 
 
+def remap_tickers_after_override() -> None:
+    """
+    Po zmianie ticker_overrides.json — przemapuj yahoo w załadowanym raporcie
+    i wyczyść cache analizy / timeline.
+    """
+    from core.importer_maps import map_ticker_to_yahoo
+
+    report = get_report()
+    if report is None:
+        return
+
+    def _remap(df):
+        if df is None or getattr(df, "empty", True):
+            return
+        if "ticker_xtb" in df.columns:
+            df["ticker_yahoo"] = df["ticker_xtb"].astype(str).map(map_ticker_to_yahoo)
+
+    _remap(report.open_positions)
+    _remap(report.closed_positions)
+    st.session_state.analyzed_open = None
+    st.session_state.analysis_signature = None
+    st.session_state.portfolio_timeline = None
+    st.session_state.timeline_signature = None
+    st.session_state.cost_basis_history = None
+    st.session_state.trade_analytics_summary = None
+    st.session_state.round_trips = None
+    st.session_state.analytics_signature = None
+
+
 def get_analyzed_open() -> pd.DataFrame | None:
     """
     Zwraca przeanalizowany portfel otwarty (cache w session_state).

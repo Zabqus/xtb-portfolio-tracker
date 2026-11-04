@@ -23,6 +23,7 @@ from core.risk_metrics import (
     compute_rolling_risk,
     high_correlation_pairs,
 )
+from core.importer_maps import positions_missing_prices
 from core.session import (
     get_analyzed_open,
     get_portfolio_timeline,
@@ -75,6 +76,16 @@ if age is not None:
         st.caption("Ceny sprzed ponad godziny — odśwież stronę")
 else:
     st.caption("Ceny będą pobrane przy pierwszym załadowaniu")
+
+missing_prices = positions_missing_prices(analyzed)
+if missing_prices:
+    tickers = ", ".join(r["ticker_xtb"] for r in missing_prices[:8])
+    more = f" (+{len(missing_prices) - 8})" if len(missing_prices) > 8 else ""
+    st.warning(
+        f"Brak ceny Yahoo dla: **{tickers}{more}**. "
+        "Dodaj mapowanie w sidebarze → *Mapowanie tickerów* "
+        "(zapis w `ticker_overrides.json`)."
+    )
 
 summary = portfolio_summary(analyzed)
 currency = str(summary["display_currency"])

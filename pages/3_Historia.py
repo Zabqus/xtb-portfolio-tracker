@@ -8,11 +8,18 @@ from streamlit_extras.metric_cards import style_metric_cards
 
 from core.closed_analysis import closed_positions_summary, get_top_trades
 from core.cost_basis import get_current_cost_basis
+from core.belka_tax import compute_belka_year
 from core.dividends import (
     dividends_per_ticker,
     dividends_per_year,
     dividends_summary,
     parse_dividends,
+)
+from core.pit38_export import Pit38ExportError, default_pit38_filename, generate_pit38_excel_bytes
+from core.tax_loss_carry import (
+    delete_carry_year,
+    load_carry_entries,
+    upsert_carry_loss,
 )
 from core.dividend_calendar import (
     build_dividend_calendar,
@@ -641,7 +648,7 @@ with tab_closed:
 with tab_tax:
     section_header(
         "Kalkulator podatku Belki (19%)",
-        "Szacunek z Closed Positions oraz dywidend z Cash Operations",
+        "NBP · WHT · przenoszenie strat · eksport PIT-38 (szacunek edukacyjny)",
     )
 
     if closed is None or closed.empty or "close_time" not in closed.columns:
@@ -649,6 +656,9 @@ with tab_tax:
             "Brak arkusza **Closed Positions** w pliku. "
             "Pobierz pełny eksport Excel z platformy XTB."
         )
+        selected_tax_year = pd.Timestamp.now().year
+        belka = None
+        net_income = 0.0
     else:
         tax_df = closed.copy()
         tax_df["close_dt"] = pd.to_datetime(tax_df["close_time"], errors="coerce")
@@ -658,6 +668,9 @@ with tab_tax:
         years = sorted(tax_df["tax_year"].unique().astype(int).tolist(), reverse=True)
         if not years:
             st.info("Brak zamkniętych pozycji z poprawną datą zamknięcia.")
+            selected_tax_year = pd.Timestamp.now().year
+            belka = None
+            net_income = 0.0
         else:
             current_year = pd.Timestamp.now().year
             default_idx = years.index(current_year) if current_year in years else 0
@@ -668,81 +681,192 @@ with tab_tax:
                 key="tax_year_filter",
             )
 
-            year_df = tax_df[tax_df["tax_year"] == int(selected_tax_year)].copy()
-            year_df = year_df.sort_values("close_dt")
+            with st.spinner("Przeliczanie Belki (kursy NBP + WHT)…"):
+                belka = compute_belka_year(
+                    closed,
+                    report.cash_operations,
+                    int(selected_tax_year),
+                    report.account_currency or currency,
+                )
+            tax_ccy = belka.currency
+            net_income = belka.capital_net
 
-            total_gain = float(year_df.loc[year_df["pnl"] > 0, "pnl"].sum())
-            total_loss = float(year_df.loc[year_df["pnl"] < 0, "pnl"].sum())
-            net_income = total_gain + total_loss
-            tax_due = max(0.0, net_income * 0.19)
+            fx_label = {
+                "nbp": "kursy średnie NBP (data zamknięcia / wypłaty)",
+                "mixed": "NBP + fallback (część wierszy bez kursu)",
+                "account": "waluta konta (bez przeliczenia NBP)",
+            }.get(belka.fx_method, belka.fx_method)
+            st.caption(f"Przeliczenie: **{fx_label}** · wyniki w **{tax_ccy}**")
 
             t1, t2, t3, t4 = st.columns(4)
             with t1:
-                st.metric("Zrealizowane zyski", format_currency(total_gain, currency))
+                st.metric("Zrealizowane zyski", format_currency(belka.capital_gains, tax_ccy))
             with t2:
-                st.metric("Zrealizowane straty", format_currency(total_loss, currency))
+                st.metric("Zrealizowane straty", format_currency(belka.capital_losses, tax_ccy))
             with t3:
                 st.metric(
-                    "Podstawa opodatkowania",
-                    format_currency(net_income, currency),
-                    delta_color=pnl_delta_color(net_income),
+                    "Wynik netto",
+                    format_currency(belka.capital_net, tax_ccy),
+                    delta_color=pnl_delta_color(belka.capital_net),
                 )
             with t4:
-                st.metric("Szacunkowy podatek (19%)", format_currency(tax_due, currency))
-
-            if net_income < 0:
-                st.info(
-                    f"Strata netto **{format_currency(net_income, currency)}** — "
-                    "podatek = 0. Stratę można rozliczyć w kolejnych latach "
-                    "(do 5 lat, max 50% rocznie)."
+                st.metric(
+                    "Podatek od zysków (po stratach z lat ub.)",
+                    format_currency(belka.capital_tax, tax_ccy),
+                    help=(
+                        f"Podstawa {format_currency(belka.capital_base, tax_ccy)} "
+                        f"po odjęciu {format_currency(belka.carry_applied, tax_ccy)} z ledżera."
+                    ),
                 )
 
-            # Dywidendy w danym roku
-            if report.cash_operations is not None:
-                div_all = parse_dividends(report.cash_operations)
-                if not div_all.empty:
-                    div_year = div_all[div_all["year"] == int(selected_tax_year)]
-                    total_dividends = float(div_year["amount"].sum())
-                    if total_dividends != 0:
-                        tax_on_dividends = total_dividends * 0.19
-                        st.divider()
-                        d1, d2 = st.columns(2)
-                        with d1:
-                            st.metric(
-                                "Dywidendy (rok)",
-                                format_currency(total_dividends, currency),
-                            )
-                        with d2:
-                            st.metric(
-                                "Podatek od dywidend (19%)",
-                                format_currency(tax_on_dividends, currency),
-                            )
-                        st.caption(
-                            "ℹ️ Dywidendy zagraniczne mogą być już częściowo opodatkowane "
-                            "u źródła (withholding tax). Faktyczna dopłata w PL może być niższa."
-                        )
+            if belka.capital_net < 0:
+                st.info(
+                    f"Strata netto **{format_currency(belka.capital_net, tax_ccy)}** — "
+                    "podatek od zysków = 0. Zapisz ją w ledżerze poniżej "
+                    "(do 5 lat, max 50% danej straty rocznie)."
+                )
 
-            # Tabela narastająca
-            if not year_df.empty:
-                show = year_df[["ticker_xtb", "close_dt", "pnl"]].copy()
-                show["cumulative_pnl"] = show["pnl"].cumsum()
+            # Dywidendy + WHT
+            st.divider()
+            st.markdown("#### Dywidendy i podatek u źródła (WHT)")
+            d1, d2, d3, d4 = st.columns(4)
+            with d1:
+                st.metric("Dywidendy brutto", format_currency(belka.dividends_gross, tax_ccy))
+            with d2:
+                st.metric("Belka 19% od dywidend", format_currency(belka.dividend_tax_gross, tax_ccy))
+            with d3:
+                st.metric(
+                    "WHT (zagranica)",
+                    format_currency(belka.withholding_tax, tax_ccy),
+                    help="Suma |withholding| z Cash Operations, przeliczona NBP.",
+                )
+            with d4:
+                st.metric(
+                    "Dopłata Belki po WHT",
+                    format_currency(belka.dividend_tax_after_wht, tax_ccy),
+                )
+            st.metric("Łączny szacunek Belki", format_currency(belka.total_tax, tax_ccy))
+            st.caption(
+                "Kredyt WHT nie może przekroczyć polskiego 19% od tych dywidend. "
+                "Umowy o unikaniu podwójnego opodatkowania mogą zmieniać limit — to szacunek."
+            )
+
+            year_df = belka.closed_detail
+            if year_df is not None and not year_df.empty:
+                show = year_df[["ticker_xtb", "close_dt", "pnl_pln"]].copy()
+                show["cumulative_pnl"] = show["pnl_pln"].cumsum()
                 show["cumulative_tax"] = show["cumulative_pnl"].clip(lower=0) * 0.19
                 show = show.rename(
                     columns={
                         "ticker_xtb": "Ticker",
                         "close_dt": "Data zamknięcia",
-                        "pnl": "PnL",
+                        "pnl_pln": "PnL PLN",
                         "cumulative_pnl": "Skumulowany PnL",
                         "cumulative_tax": "Podatek narastający",
                     }
                 )
-                for col in ("PnL", "Skumulowany PnL", "Podatek narastający"):
+                for col in ("PnL PLN", "Skumulowany PnL", "Podatek narastający"):
                     show[col] = show[col].round(2)
                 st.dataframe(show, use_container_width=True, hide_index=True)
 
+            # --- Przenoszenie strat ---
+            st.divider()
+            st.markdown("#### Przenoszenie strat (5 lat / max 50%)")
+            st.caption(
+                "Zapisz stratę netto z roku, w którym powstała. W kolejnych latach "
+                "aplikacja pomniejszy dodatnią podstawę (max 50% danej straty rocznie)."
+            )
+            carry_entries = load_carry_entries()
+            if belka.carry_applied > 0:
+                st.success(
+                    f"Zastosowano **{format_currency(belka.carry_applied, tax_ccy)}** "
+                    f"strat z lat ubiegłych → podstawa **{format_currency(belka.capital_base, tax_ccy)}**."
+                )
+                if belka.carry and belka.carry.details:
+                    st.dataframe(
+                        pd.DataFrame(belka.carry.details),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+            with st.form("carry_loss_form"):
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    carry_year = st.number_input(
+                        "Rok powstania straty",
+                        min_value=2000,
+                        max_value=2100,
+                        value=int(selected_tax_year),
+                        step=1,
+                    )
+                with c2:
+                    default_loss = abs(min(0.0, belka.capital_net)) if int(carry_year) == int(selected_tax_year) else 0.0
+                    carry_loss = st.number_input(
+                        "Kwota straty (PLN, dodatnia)",
+                        min_value=0.0,
+                        value=float(round(default_loss, 2)),
+                        step=100.0,
+                    )
+                with c3:
+                    carry_note = st.text_input("Notatka", value="")
+                save_carry = st.form_submit_button("Zapisz / nadpisz stratę w ledżerze")
+                if save_carry:
+                    if carry_loss <= 0:
+                        st.error("Podaj dodatnią kwotę straty.")
+                    else:
+                        upsert_carry_loss(int(carry_year), float(carry_loss), carry_note)
+                        st.success(f"Zapisano stratę {carry_loss:.2f} PLN z roku {int(carry_year)}.")
+                        st.rerun()
+
+            if carry_entries:
+                led = pd.DataFrame(
+                    [
+                        {
+                            "Rok": e.origin_year,
+                            "Strata": round(e.original_loss, 2),
+                            "Wykorzystano": round(e.used_so_far, 2),
+                            "Pozostało": round(e.remaining, 2),
+                            "Notatka": e.note,
+                        }
+                        for e in carry_entries
+                    ]
+                )
+                st.dataframe(led, use_container_width=True, hide_index=True)
+                del_year = st.selectbox(
+                    "Usuń wpis z roku",
+                    options=[e.origin_year for e in carry_entries],
+                    key="carry_delete_year",
+                )
+                if st.button("Usuń wybrany wpis", key="carry_delete_btn"):
+                    delete_carry_year(int(del_year))
+                    st.rerun()
+
+            # --- Eksport PIT-38 ---
+            st.divider()
+            st.markdown("#### Eksport pomocniczy PIT-38")
+            st.caption(
+                "Excel z podsumowaniem (zyski/straty, dywidendy, WHT, ledżer strat). "
+                "To nie jest e-Deklaracja — tylko dane do ręcznego uzupełnienia."
+            )
+            try:
+                pit_bytes = generate_pit38_excel_bytes(
+                    report, int(selected_tax_year), summary=belka
+                )
+                st.download_button(
+                    label="Pobierz Excel (PIT-38 helper)",
+                    data=pit_bytes,
+                    file_name=default_pit38_filename(int(selected_tax_year)),
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="pit38_download",
+                )
+            except Pit38ExportError as exc:
+                st.error(f"Nie udało się wygenerować eksportu: {exc}")
+            except Exception as exc:
+                st.error(f"Nie udało się wygenerować eksportu: {exc}")
+
             # --- Tax-loss harvesting ---
             st.divider()
-            st.markdown("#### 🎯 Tax-loss harvesting")
+            st.markdown("#### Tax-loss harvesting")
             st.caption(
                 "Sprzedaż otwartych pozycji ze stratą **przed końcem roku** obniża podstawę "
                 "opodatkowania zysków kapitałowych (Belka 19%). Strata nie pomniejsza dywidend."
@@ -760,36 +884,36 @@ with tab_tax:
                 st.info("Brak otwartych pozycji do analizy.")
             else:
                 harvest = compute_tax_harvest(
-                    analyzed_tlh, realized_gain_ytd=net_income, currency=currency
+                    analyzed_tlh, realized_gain_ytd=net_income, currency=tax_ccy
                 )
                 if not harvest.has_losers:
                     st.success(
-                        "Brak otwartych pozycji ze stratą — nie ma czego realizować. 👍"
+                        "Brak otwartych pozycji ze stratą — nie ma czego realizować."
                     )
                 else:
                     h1, h2, h3, h4 = st.columns(4)
                     with h1:
                         st.metric(
                             "Zrealizowany wynik (rok)",
-                            format_currency(harvest.realized_gain_ytd, currency),
+                            format_currency(harvest.realized_gain_ytd, tax_ccy),
                             delta_color=pnl_delta_color(harvest.realized_gain_ytd),
                         )
                     with h2:
                         st.metric(
                             "Strata do zebrania",
-                            format_currency(harvest.harvestable_loss, currency),
+                            format_currency(harvest.harvestable_loss, tax_ccy),
                             help="Suma niezrealizowanych strat na otwartych pozycjach.",
                         )
                     with h3:
                         st.metric(
                             "Oszczędność podatku (ten rok)",
-                            format_currency(harvest.tax_saved, currency),
+                            format_currency(harvest.tax_saved, tax_ccy),
                             help="Spadek podatku Belki, jeśli zrealizujesz straty.",
                         )
                     with h4:
                         st.metric(
                             "Do przeniesienia (5 lat)",
-                            format_currency(harvest.carry_forward, currency),
+                            format_currency(harvest.carry_forward, tax_ccy),
                             help="Nadwyżka straty ponad tegoroczne zyski — rozliczysz w kolejnych latach.",
                         )
 
@@ -808,10 +932,10 @@ with tab_tax:
                         cand.rename(
                             columns={
                                 "ticker_xtb": "Ticker",
-                                "market_value": f"Wartość ({currency})",
-                                "loss": f"Strata ({currency})",
+                                "market_value": f"Wartość ({tax_ccy})",
+                                "loss": f"Strata ({tax_ccy})",
                                 "roi_pct": "ROI %",
-                                "tax_shield": f"Tarcza podatkowa ({currency})",
+                                "tax_shield": f"Tarcza podatkowa ({tax_ccy})",
                             }
                         ),
                         use_container_width=True,
@@ -819,14 +943,13 @@ with tab_tax:
                     )
                     st.caption(
                         "„Tarcza podatkowa” = realne zmniejszenie tegorocznego podatku z danej "
-                        "pozycji (do wysokości tegorocznych zysków). ⚠️ Po sprzedaży uważaj na "
+                        "pozycji (do wysokości tegorocznych zysków). Po sprzedaży uważaj na "
                         "natychmiastowy odkup tych samych walorów oraz na koszty prowizji/spreadu."
                     )
 
             st.caption(
-                "⚠️ To jest szacunek edukacyjny. Skonsultuj z doradcą podatkowym. "
-                "Nie uwzględnia podatku u źródła, ulg ani umów o unikaniu podwójnego "
-                "opodatkowania."
+                "To jest szacunek edukacyjny. Skonsultuj z doradcą podatkowym. "
+                "NBP / WHT / ledżer strat upraszczają rozliczenie — nie zastępują PIT-38."
             )
 
     # --- IKE / IKZE (nie wymaga Closed Positions) ---
