@@ -13,6 +13,12 @@ from core.importer_maps import (
     set_ticker_override,
 )
 from core.multi_account import MULTI_ACCOUNT_CURRENCY
+from core.prefs_backup import (
+    default_backup_filename,
+    export_prefs_zip,
+    import_prefs_zip,
+    list_existing_pref_files,
+)
 from core.session import (
     get_display_currency,
     get_report,
@@ -22,6 +28,43 @@ from core.session import (
     set_display_currency,
 )
 from ui.theme import render_theme_selector
+
+
+def _render_prefs_backup_panel() -> None:
+    existing = list_existing_pref_files()
+    with st.expander("Backup preferencji", expanded=False):
+        st.caption(
+            "Lokalny ZIP: watchlist, alerty, tagi, snapshoty, mapowania, "
+            "straty podatkowe, IKE/IKZE, motyw."
+        )
+        if existing:
+            st.caption("Pliki: " + ", ".join(p.name for p in existing))
+        else:
+            st.caption("Brak lokalnych plików preferencji do spakowania.")
+
+        if existing:
+            st.download_button(
+                "Pobierz backup ZIP",
+                data=export_prefs_zip(),
+                file_name=default_backup_filename(),
+                mime="application/zip",
+                key="prefs_backup_download",
+                use_container_width=True,
+            )
+
+        uploaded = st.file_uploader(
+            "Przywróć z ZIP",
+            type=["zip"],
+            key="prefs_backup_upload",
+        )
+        if uploaded is not None:
+            if st.button("Przywróć (nadpisz)", key="prefs_backup_restore", use_container_width=True):
+                restored = import_prefs_zip(uploaded.getvalue(), overwrite=True)
+                if restored:
+                    st.success("Przywrócono: " + ", ".join(restored))
+                    st.rerun()
+                else:
+                    st.warning("W ZIP nie znaleziono znanych plików preferencji.")
 
 
 def _render_ticker_mapping_panel() -> None:
@@ -166,5 +209,6 @@ def render_import_sidebar() -> bool:
 
         st.divider()
         _render_ticker_mapping_panel()
+        _render_prefs_backup_panel()
 
     return True

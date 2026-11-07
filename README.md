@@ -63,7 +63,7 @@ xtb_portfolio_tracker/
 
 Local user files (in `.gitignore`): `watchlist.json`, `trade_tags.json`,
 `user_preferences.json`, `price_alerts.json`, `snapshots.json`,
-`ticker_overrides.json`, `tax_loss_carry.json`,
+`ticker_overrides.json`, `tax_loss_carry.json`, `ike_ikze_contributions.json`,
 and optionally `consensus_snapshots.json` / `signal_snapshots.json`.
 
 ## Running the app
@@ -124,10 +124,13 @@ Open **http://localhost:8501** → upload the XTB export in the sidebar → brow
 ### Allocation, watchlist, alerts
 
 - **Allocation** – sector / region (USA / EU / PL) + FX exposure + FX decomposition
-- **Rebalancing** – target weights, drift, buy suggestions and new-cash allocation
+- **Rebalancing** – target weights, drift, basket + **per-ticker** buy/reduce suggestions and new-cash allocation
 - **Watchlist** – symbols outside the portfolio, 1M/3M/1Y returns vs portfolio weighted average
-- **ROI alerts** – ±X% threshold with auto-refresh
+- **ROI alerts** – ±X% threshold with auto-refresh, CSV of triggered alerts, optional Windows toast
 - **Price alerts** – price thresholds (`price_alerts.json`)
+- **Prefs backup** – ZIP export/restore of local JSON prefs (sidebar)
+- **Fee drag** – commission impact from Closed Positions (Historia + Belka year note)
+- **IKE/IKZE contribution log** – yearly fills vs limits (`ike_ikze_contributions.json`)
 
 ### Consensus, signals, returns
 

@@ -92,3 +92,85 @@ def normalize_targets(raw_targets: dict[str, float]) -> tuple[dict[str, float], 
     """Zwraca (cele, suma). Pomaga ostrzec użytkownika, gdy suma ≠ 100%."""
     clean = {k: max(0.0, float(v)) for k, v in raw_targets.items()}
     return clean, float(sum(clean.values()))
+
+
+def suggest_ticker_orders(
+    enriched: pd.DataFrame,
+    basket_rebalance: pd.DataFrame,
+    group_col: str,
+    *,
+    min_order: float = 0.0,
+) -> pd.DataFrame:
+    """
+    Rozbija sugestie koszykowe na konkretne tickery.
+
+    - Dokup: rozdział `delta_value` proporcjonalnie do wartości pozycji w koszyku
+    - Zredukuj: to samo dla ujemnych delt
+    - Koszyk bez pozycji: pomijany (brak instrumentu do wskazania)
+
+    enriched: wynik enrich_portfolio_allocation (ticker_xtb, group_col, market_value, …).
+    basket_rebalance: wynik compute_rebalance.
+    """
+    if (
+        enriched is None
+        or enriched.empty
+        or basket_rebalance is None
+        or basket_rebalance.empty
+        or group_col not in enriched.columns
+        or group_col not in basket_rebalance.columns
+    ):
+        return pd.DataFrame()
+
+    rows: list[dict] = []
+    for _, basket in basket_rebalance.iterrows():
+        name = str(basket[group_col])
+        delta = float(basket.get("delta_value", 0.0))
+        action = str(basket.get("action", "OK"))
+        if action == "OK" or abs(delta) < 1e-9:
+            continue
+
+        members = enriched[enriched[group_col].astype(str) == name].copy()
+        if members.empty:
+            rows.append(
+                {
+                    "basket": name,
+                    "ticker_xtb": "—",
+                    "ticker_yahoo": "",
+                    "action": action,
+                    "suggested_value": round(delta, 2),
+                    "basket_delta": round(delta, 2),
+                    "weight_in_basket_pct": None,
+                    "note": "Brak pozycji w koszyku — wybierz instrument ręcznie",
+                }
+            )
+            continue
+
+        total = float(members["market_value"].sum())
+        if total <= 0:
+            continue
+
+        for _, pos in members.iterrows():
+            share = float(pos["market_value"]) / total
+            order_value = delta * share
+            if abs(order_value) < float(min_order):
+                continue
+            rows.append(
+                {
+                    "basket": name,
+                    "ticker_xtb": str(pos.get("ticker_xtb", "")),
+                    "ticker_yahoo": str(pos.get("ticker_yahoo", "")),
+                    "action": "Dokup" if order_value > 0 else "Zredukuj",
+                    "suggested_value": round(order_value, 2),
+                    "basket_delta": round(delta, 2),
+                    "weight_in_basket_pct": round(share * 100.0, 1),
+                    "note": "",
+                }
+            )
+
+    if not rows:
+        return pd.DataFrame()
+    out = pd.DataFrame(rows)
+    out["_abs"] = out["suggested_value"].abs()
+    return out.sort_values(["_abs", "basket"], ascending=[False, True]).drop(
+        columns="_abs"
+    ).reset_index(drop=True)

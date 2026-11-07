@@ -11,13 +11,18 @@ from core.alerts import (
     PriceAlert,
     alert_row_keys,
     build_roi_snapshot,
+    build_triggered_alerts_export,
     check_price_alerts,
     compute_roi_alerts,
     compute_roi_deltas,
+    default_alerts_csv_filename,
     load_price_alerts,
     mark_new_alerts,
     save_price_alerts,
+    summarize_new_alerts_for_toast,
+    triggered_alerts_to_csv,
 )
+from core.local_notify import show_windows_toast
 from core.session import get_analyzed_open, get_display_currency, get_report, init_session_state
 from ui.formatters import format_currency
 from ui.sidebar import render_import_sidebar
@@ -38,12 +43,18 @@ if "alert_roi_snapshot" not in st.session_state:
     st.session_state.alert_roi_snapshot = None
 if "alert_mode" not in st.session_state:
     st.session_state.alert_mode = "roi"
+if "alert_toast_enabled" not in st.session_state:
+    st.session_state.alert_toast_enabled = False
+if "alert_toasted_keys" not in st.session_state:
+    st.session_state.alert_toasted_keys = set()
+if "alert_price_prev_keys" not in st.session_state:
+    st.session_state.alert_price_prev_keys = set()
 
 st.title("🔔 Alerty")
 
 st.caption(
-    "Powiadomienia w aplikacji (bez alertów systemowych): lista pozycji, które przekroczyły "
-    "ustawiony próg **±X%** ROI względem średniej ceny zakupu z raportu XTB."
+    "Alerty lokalne (bez chmury/maila): próg ROI, alerty cenowe, eksport CSV "
+    "wyzwolonych oraz opcjonalny toast Windows."
 )
 
 if not render_import_sidebar():
@@ -101,7 +112,7 @@ with c4:
     if st.button("Odśwież", type="primary", use_container_width=True):
         st.rerun()
 
-c5, c6, c7 = st.columns([2, 2, 2])
+c5, c6, c7, c8 = st.columns([2, 2, 2, 2])
 with c5:
     auto = st.checkbox("Auto-odświeżanie", value=st.session_state.alert_auto_refresh, key="alert_auto_cb")
     st.session_state.alert_auto_refresh = auto
@@ -117,6 +128,14 @@ with c6:
         )
         st.session_state.alert_refresh_seconds = secs
 with c7:
+    toast_on = st.checkbox(
+        "Toast Windows",
+        value=st.session_state.alert_toast_enabled,
+        key="alert_toast_cb",
+        help="Balon powiadomień przy nowych alertach (tylko Windows, lokalnie).",
+    )
+    st.session_state.alert_toast_enabled = toast_on
+with c8:
     if st.button("Zapisz stan ROI (baza delty)", use_container_width=True):
         st.session_state.alert_roi_snapshot = build_roi_snapshot(analyzed)
         st.success("Zapisano snapshot ROI.")
@@ -135,8 +154,28 @@ else:
     alerts = compute_roi_alerts(analyzed, threshold, direction=direction)
     alert_mode_key = "roi"
 
-alerts = mark_new_alerts(alerts, st.session_state.alert_prev_keys, mode=alert_mode_key)
+# prev_keys przed aktualizacją — do toastu „nowych”
+prev_roi_keys = set(st.session_state.alert_prev_keys)
+alerts = mark_new_alerts(alerts, prev_roi_keys, mode=alert_mode_key)
 st.session_state.alert_prev_keys = alert_row_keys(alerts, mode=alert_mode_key)
+
+# Price alerts early (dla CSV / toast)
+price_alerts = load_price_alerts()
+price_triggered = (
+    check_price_alerts(price_alerts, analyzed) if price_alerts else pd.DataFrame()
+)
+price_hits = (
+    price_triggered[price_triggered["wyzwolony"]]
+    if not price_triggered.empty and "wyzwolony" in price_triggered.columns
+    else pd.DataFrame()
+)
+price_keys_now = set()
+if not price_hits.empty:
+    price_keys_now = {
+        f"{r['ticker_xtb']}:{r['kierunek']}:{r['cel']}" for _, r in price_hits.iterrows()
+    }
+new_price_keys = price_keys_now - set(st.session_state.alert_price_prev_keys)
+st.session_state.alert_price_prev_keys = price_keys_now
 
 # --- Podsumowanie ---
 st.subheader("Aktywne alerty")
@@ -151,6 +190,51 @@ with m2:
     st.metric("Powyżej progu", n_alert, delta=f"próg {threshold:g}%", delta_color="off")
 with m3:
     st.metric("Nowe (ten cykl)", n_new)
+
+export_df = build_triggered_alerts_export(
+    alerts if alerts is not None and not alerts.empty else None,
+    price_hits if not price_hits.empty else None,
+    mode=alert_mode_key,
+    threshold_pct=threshold,
+)
+csv_cols = st.columns([2, 2, 3])
+with csv_cols[0]:
+    if export_df is not None and not export_df.empty:
+        st.download_button(
+            "Pobierz CSV wyzwolonych",
+            data=triggered_alerts_to_csv(export_df),
+            file_name=default_alerts_csv_filename(),
+            mime="text/csv",
+            key="alerts_csv_download",
+            use_container_width=True,
+        )
+    else:
+        st.caption("Brak wyzwolonych alertów do CSV.")
+
+# Toast Windows — tylko nowe (nie spam przy każdym rerun)
+if st.session_state.alert_toast_enabled:
+    toast_roi = None
+    if alerts is not None and not alerts.empty and "is_new" in alerts.columns:
+        toast_roi = alerts[alerts["is_new"] == True].copy()  # noqa: E712
+    toast_price = None
+    if new_price_keys and not price_hits.empty:
+        toast_price = price_hits[
+            price_hits.apply(
+                lambda r: f"{r['ticker_xtb']}:{r['kierunek']}:{r['cel']}" in new_price_keys,
+                axis=1,
+            )
+        ]
+    toast = summarize_new_alerts_for_toast(toast_roi, toast_price)
+    if toast:
+        title, body = toast
+        toast_key = f"{title}|{body}"
+        if toast_key not in st.session_state.alert_toasted_keys:
+            ok = show_windows_toast(title, body)
+            st.session_state.alert_toasted_keys.add(toast_key)
+            if ok:
+                st.caption("Wysłano toast Windows.")
+            else:
+                st.caption("Toast niedostępny (nie-Windows lub błąd PowerShell).")
 
 if alerts is None or alerts.empty:
     st.success(f"Żadna pozycja nie przekroczyła progu {threshold:g}% (tryb: {mode}).")
@@ -232,8 +316,6 @@ st.divider()
 st.subheader("Alerty cenowe")
 st.caption("Powiadomi gdy cena instrumentu przekroczy zadany poziom (powyżej lub poniżej).")
 
-price_alerts = load_price_alerts()
-
 # Formularz dodawania
 with st.expander("➕ Dodaj alert cenowy"):
     pa1, pa2, pa3, pa4 = st.columns([2, 2, 2, 2])
@@ -281,10 +363,10 @@ with st.expander("➕ Dodaj alert cenowy"):
         )
         st.rerun()
 
-# Sprawdź wyzwolone
+# Sprawdź wyzwolone (już policzone wyżej)
 if price_alerts:
-    triggered_df = check_price_alerts(price_alerts, analyzed)
-    hit = triggered_df[triggered_df["wyzwolony"]] if not triggered_df.empty else pd.DataFrame()
+    triggered_df = price_triggered
+    hit = price_hits
 
     if not hit.empty:
         st.warning(f"🔔 {len(hit)} alert(y) cenowe wyzwolone!")

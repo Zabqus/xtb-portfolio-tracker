@@ -15,6 +15,13 @@ from core.dividends import (
     dividends_summary,
     parse_dividends,
 )
+from core.fee_drag import compute_fee_drag
+from core.ike_ikze_log import (
+    add_contribution,
+    contributions_dataframe,
+    delete_contribution,
+    year_status,
+)
 from core.pit38_export import Pit38ExportError, default_pit38_filename, generate_pit38_excel_bytes
 from core.tax_loss_carry import (
     delete_carry_year,
@@ -226,6 +233,47 @@ with tab_analytics:
                 f"Łączny zrealizowany PnL (round-tripy): "
                 f"**{format_currency(summary.total_realized_pnl, currency)}**"
             )
+
+            fee_all = compute_fee_drag(closed)
+            if fee_all.has_data:
+                with st.expander("Fee drag — prowizje (Closed Positions)", expanded=False):
+                    f1, f2, f3, f4 = st.columns(4)
+                    with f1:
+                        st.metric("PnL brutto", format_currency(fee_all.gross_pnl, currency))
+                    with f2:
+                        st.metric(
+                            "Prowizje (|∑|)",
+                            format_currency(fee_all.commission_total, currency),
+                        )
+                    with f3:
+                        st.metric("PnL netto (po prowizjach)", format_currency(fee_all.net_pnl, currency))
+                    with f4:
+                        drag_lbl = (
+                            f"{fee_all.fee_drag_pct:.2f}%"
+                            if fee_all.fee_drag_pct is not None
+                            else "—"
+                        )
+                        st.metric("Fee drag", drag_lbl, help="|prowizje| / |PnL brutto|")
+                    st.caption(
+                        f"Szacunkowa tarcza Belki od prowizji (~19%): "
+                        f"**{format_currency(fee_all.tax_shield_estimate, currency)}** · "
+                        f"{fee_all.currency_note}."
+                    )
+                    if not fee_all.by_year.empty:
+                        st.dataframe(
+                            fee_all.by_year.rename(
+                                columns={
+                                    "tax_year": "Rok",
+                                    "trades": "Transakcje",
+                                    "gross_pnl": "PnL brutto",
+                                    "commission": "Prowizje",
+                                    "net_pnl": "PnL netto",
+                                    "fee_drag_pct": "Fee drag %",
+                                }
+                            ),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
 
             rt = pd.DataFrame()
             if has_round_trips:
@@ -751,6 +799,22 @@ with tab_tax:
                 "Umowy o unikaniu podwójnego opodatkowania mogą zmieniać limit — to szacunek."
             )
 
+            fee_year = compute_fee_drag(closed, tax_year=int(selected_tax_year))
+            if fee_year.has_data and fee_year.commission_total > 0:
+                st.info(
+                    f"Prowizje w {selected_tax_year}: "
+                    f"**{format_currency(fee_year.commission_total, currency)}** "
+                    f"(PnL brutto {format_currency(fee_year.gross_pnl, currency)} → "
+                    f"netto {format_currency(fee_year.net_pnl, currency)}"
+                    + (
+                        f", fee drag {fee_year.fee_drag_pct:.2f}%"
+                        if fee_year.fee_drag_pct is not None
+                        else ""
+                    )
+                    + "). XTB zwykle już uwzględnia prowizję w PnL Closed Positions — "
+                    "to podgląd skali kosztów, nie druga korekta Belki."
+                )
+
             year_df = belka.closed_detail
             if year_df is not None and not year_df.empty:
                 show = year_df[["ticker_xtb", "close_dt", "pnl_pln"]].copy()
@@ -996,6 +1060,103 @@ with tab_tax:
         ikze_limit = float(IKZE_LIMIT_BIZ_2025) if use_biz_limit else float(ikze_limit_std)
         if use_biz_limit:
             st.caption(f"Stosowany limit IKZE (działalność): **{ikze_limit:,.0f} zł**.")
+
+        st.markdown("##### Dziennik wpłat vs limity")
+        log_year = st.number_input(
+            "Rok dziennika",
+            min_value=2000,
+            max_value=2100,
+            value=int(pd.Timestamp.now().year),
+            step=1,
+            key="ike_log_year",
+        )
+        status = year_status(
+            int(log_year),
+            ike_limit=float(ike_limit),
+            ikze_limit=float(ikze_limit),
+        )
+        s1, s2 = st.columns(2)
+        with s1:
+            st.metric(
+                "IKE wpłacone / limit",
+                f"{status.ike_contributed:,.0f} / {status.ike_limit:,.0f} zł",
+                delta=f"zostało {status.ike_remaining:,.0f} zł",
+                delta_color="off",
+            )
+            st.progress(min(1.0, status.ike_pct / 100.0))
+        with s2:
+            st.metric(
+                "IKZE wpłacone / limit",
+                f"{status.ikze_contributed:,.0f} / {status.ikze_limit:,.0f} zł",
+                delta=f"zostało {status.ikze_remaining:,.0f} zł",
+                delta_color="off",
+            )
+            st.progress(min(1.0, status.ikze_pct / 100.0))
+        if status.ike_contributed > status.ike_limit + 0.01:
+            st.warning("Wpłaty IKE przekraczają limit roczny.")
+        if status.ikze_contributed > status.ikze_limit + 0.01:
+            st.warning("Wpłaty IKZE przekraczają limit roczny.")
+
+        with st.form("ike_ikze_contrib_form", clear_on_submit=True):
+            fc1, fc2, fc3, fc4 = st.columns(4)
+            with fc1:
+                log_account = st.selectbox("Konto", ["IKE", "IKZE"], key="ike_log_account")
+            with fc2:
+                log_amount = st.number_input(
+                    "Kwota (zł)", min_value=0.0, value=1000.0, step=100.0, key="ike_log_amount"
+                )
+            with fc3:
+                log_date = st.date_input("Data", value=pd.Timestamp.now().date(), key="ike_log_date")
+            with fc4:
+                log_note = st.text_input("Notatka", value="", key="ike_log_note")
+            if st.form_submit_button("Dodaj wpłatę"):
+                try:
+                    add_contribution(log_account, float(log_amount), log_date, log_note)
+                    st.success("Zapisano wpłatę.")
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+
+        contrib_df = contributions_dataframe()
+        if not contrib_df.empty:
+            year_mask = contrib_df["date"].astype(str).str.startswith(str(int(log_year)))
+            show_log = contrib_df.loc[year_mask] if year_mask.any() else contrib_df.head(0)
+            if not show_log.empty:
+                st.dataframe(
+                    show_log[["date", "account", "amount", "note"]].rename(
+                        columns={
+                            "date": "Data",
+                            "account": "Konto",
+                            "amount": "Kwota",
+                            "note": "Notatka",
+                        }
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                del_id = st.selectbox(
+                    "Usuń wpis",
+                    options=show_log["entry_id"].tolist(),
+                    format_func=lambda eid: next(
+                        (
+                            f"{r['date']} {r['account']} {r['amount']:.0f} zł"
+                            for _, r in show_log.iterrows()
+                            if r["entry_id"] == eid
+                        ),
+                        eid,
+                    ),
+                    key="ike_log_delete",
+                )
+                if st.button("Usuń wybraną wpłatę", key="ike_log_delete_btn"):
+                    delete_contribution(str(del_id))
+                    st.rerun()
+            else:
+                st.caption(f"Brak wpłat w dzienniku dla {int(log_year)}.")
+        else:
+            st.caption("Dziennik pusty — dodaj pierwszą wpłatę IKE/IKZE.")
+
+        st.divider()
+        st.markdown("##### Projekcja długoterminowa")
 
         i1, i2, i3, i4 = st.columns(4)
         with i1:

@@ -14,7 +14,12 @@ from core.allocation import (
 )
 from core.analyzer import portfolio_summary
 from core.fx_decomposition import compute_fx_decomposition, summarize_fx_decomposition
-from core.rebalance import compute_rebalance, normalize_targets, suggest_cash_allocation
+from core.rebalance import (
+    compute_rebalance,
+    normalize_targets,
+    suggest_cash_allocation,
+    suggest_ticker_orders,
+)
 from core.session import get_analyzed_open, get_report
 from core.transactions import parse_cash_operations_trades
 from ui.allocation_charts import (
@@ -219,9 +224,40 @@ else:
             hide_index=True,
         )
         st.caption(
-            "Dryf = obecny − docelowy udział (pp). Dodatnia „Zmiana” = dokup, ujemna = zredukuj. "
-            "Sugestie na poziomie koszyków — konkretny instrument w koszyku wybierasz sam."
+            "Dryf = obecny − docelowy udział (pp). Dodatnia „Zmiana” = dokup, ujemna = zredukuj."
         )
+
+        ticker_orders = suggest_ticker_orders(enriched, rb, rb_group_col, min_order=1.0)
+        if not ticker_orders.empty:
+            st.markdown("**Sugestie per ticker** (rozdział proporcjonalny do wartości w koszyku)")
+            to = ticker_orders.copy()
+            st.dataframe(
+                to[
+                    [
+                        "basket",
+                        "ticker_xtb",
+                        "action",
+                        "suggested_value",
+                        "weight_in_basket_pct",
+                        "note",
+                    ]
+                ].rename(
+                    columns={
+                        "basket": "Koszyk",
+                        "ticker_xtb": "Ticker",
+                        "action": "Akcja",
+                        "suggested_value": f"Kwota ({currency})",
+                        "weight_in_basket_pct": "Udział w koszyku %",
+                        "note": "Uwaga",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.caption(
+                "To nie są zlecenia brokerskie — tylko wskazówka jak rozłożyć zmianę koszyka "
+                "na istniejące pozycje."
+            )
 
         if new_cash > 0:
             cash_alloc = suggest_cash_allocation(rb_breakdown, target_map, rb_group_col, new_cash)
@@ -241,6 +277,28 @@ else:
                     use_container_width=True,
                     hide_index=True,
                 )
+                # Per-ticker for cash-only buys: reuse basket deltas from cash_alloc
+                cash_rb = cash_alloc.copy()
+                cash_rb["delta_value"] = cash_rb["suggested_buy"]
+                cash_rb["action"] = "Dokup"
+                cash_tickers = suggest_ticker_orders(
+                    enriched, cash_rb, rb_group_col, min_order=1.0
+                )
+                if not cash_tickers.empty:
+                    st.markdown("**Dokupienia per ticker (nowa gotówka)**")
+                    ct = cash_tickers.copy()
+                    st.dataframe(
+                        ct[["basket", "ticker_xtb", "suggested_value", "weight_in_basket_pct"]].rename(
+                            columns={
+                                "basket": "Koszyk",
+                                "ticker_xtb": "Ticker",
+                                "suggested_value": f"Dokup ({currency})",
+                                "weight_in_basket_pct": "Udział w koszyku %",
+                            }
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
 st.divider()
 st.subheader("Ekspozycja walutowa")

@@ -29,6 +29,9 @@ ticker_overrides.json
 # Lokalny ledżer strat kapitałowych (Belka / PIT-38)
 tax_loss_carry.json
 
+# Lokalny dziennik wpłat IKE / IKZE
+ike_ikze_contributions.json
+
 # Lokalne alerty cenowe użytkownika
 price_alerts.json
 
